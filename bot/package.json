@@ -1,0 +1,12 @@
+{
+  "name": "snaptech-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@neondatabase/serverless": "^0.10.0"
+  }
+}

