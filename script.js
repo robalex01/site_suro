@@ -2,7 +2,7 @@
 // CONFIGURATION
 // ═════════════════════════════════════════════════════════════
 const CONFIG = {
-    API_URL: '/api/snapchat', // ← Change si ton API est ailleurs (ex: https://ton-site.vercel.app/api/snapchat)
+    API_URL: 'https://snaptech.vercel.app/api/snapchat',
     SYNC_INTERVAL: 30000      // Sync auto toutes les 30s si hors-ligne
 };
 
