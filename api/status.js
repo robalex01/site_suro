@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,6 +7,10 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ success: false });
 
   try {
+    // ─── Vérification BAN IP ───
+    const blocked = await checkBannedIP(req, res);
+    if (blocked) return blocked;
+
     const { phone } = req.query;
     if (!phone) return res.status(400).json({ success: false });
 

