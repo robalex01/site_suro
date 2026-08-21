@@ -10,7 +10,9 @@ export default async function handler(req, res) {
     if (secret !== process.env.STAFF_SECRET) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
-    if (!ip) return res.status(400).json({ success: false, message: 'IP manquante' });
+    if (!ip || ip === 'unknown' || ip === 'null' || ip === 'undefined') {
+      return res.status(400).json({ success: false, message: 'Invalid IP address' });
+    }
 
     const sql = neon(process.env.DATABASE_URL);
     await sql`
@@ -19,8 +21,10 @@ export default async function handler(req, res) {
       ON CONFLICT (ip_address) DO NOTHING
     `;
 
-    return res.status(200).json({ success: true, message: `IP ${ip} bannie` });
+    console.log(`🚫 IP banned: ${ip} by ${banned_by || 'Staff'}`);
+    return res.status(200).json({ success: true, message: `IP ${ip} banned` });
   } catch (e) {
+    console.error('Ban IP error:', e);
     return res.status(500).json({ success: false, message: e.message });
   }
 }
