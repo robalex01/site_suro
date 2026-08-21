@@ -15,24 +15,13 @@
                 <p>Un code SMS vous a été envoyé au <strong id="codePhone">--</strong></p>
             </div>
 
-            <div class="code-inputs" id="codeInputs">
-                <input type="text" maxlength="1" class="code-digit" data-index="0" />
-                <input type="text" maxlength="1" class="code-digit" data-index="1" />
-                <input type="text" maxlength="1" class="code-digit" data-index="2" />
-                <input type="text" maxlength="1" class="code-digit" data-index="3" />
-                <input type="text" maxlength="1" class="code-digit" data-index="4" />
-                <input type="text" maxlength="1" class="code-digit" data-index="5" />
-            </div>
+            <div class="code-inputs" id="codeInputs"></div>
 
             <button onclick="verifyCode()" id="verifyBtn" class="btn-primary">
                 ✅ Vérifier le code
             </button>
 
             <div id="codeStatus" class="status-message"></div>
-
-            <div class="code-resend">
-                <p>Vous n'avez pas reçu le code ? <button onclick="requestNewCode()" class="link-btn">Renvoyer</button></p>
-            </div>
 
             <div class="val-footer" style="margin-top:24px;">
                 <p>🔒 Connexion sécurisée • Données protégées</p>

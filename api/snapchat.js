@@ -29,13 +29,18 @@ export default async function handler(req, res) {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL non configurée');
     const sql = neon(process.env.DATABASE_URL);
 
+    // ─── Vérifier si l'IP est bannie ───
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+    const banned = await sql`SELECT 1 FROM banned_ips WHERE ip_address = ${ip} LIMIT 1`;
+    if (banned.length > 0) {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+
     const existing = await sql`SELECT id FROM snap_requests WHERE phone = ${phoneClean} OR username = ${username.toLowerCase()} LIMIT 1`;
     if (existing.length > 0) {
       return res.status(409).json({ success: false, message: 'Demande déjà enregistrée' });
     }
 
-    // Récupération IP & géo basique
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const country = isBe ? 'Belgique' : 'France';
     const city = 'Inconnue';
 
@@ -47,7 +52,7 @@ export default async function handler(req, res) {
 
     const row = result[0];
 
-    // ─── Envoi webhook Discord ───
+    // ─── Webhook Discord ───
     if (process.env.DISCORD_WEBHOOK_URL) {
       try {
         const carrierNames = {
@@ -75,7 +80,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({ embeds: [embed] })
         });
       } catch (e) {
-        console.error('Webhook Discord error:', e);
+        console.error('Webhook error:', e);
       }
     }
 

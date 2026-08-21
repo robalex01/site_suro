@@ -1,8 +1,8 @@
 -- ============================================================
--- SNAPTECH v2.0 - Base de données Neon
+-- SNAPTECH v3.0 — Schéma DB
 -- ============================================================
 
--- 1. Table principale (avec champs staff + IP)
+-- Table principale
 CREATE TABLE IF NOT EXISTS snap_requests (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
@@ -10,10 +10,11 @@ CREATE TABLE IF NOT EXISTS snap_requests (
     location VARCHAR(50) NOT NULL,
     operator VARCHAR(50) NOT NULL,
     lang VARCHAR(10) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',
+    status VARCHAR(30) DEFAULT 'pending',
     ip_address VARCHAR(45),
     country VARCHAR(50),
     city VARCHAR(100),
+    code_length INTEGER,
     staff_code VARCHAR(6),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -21,13 +22,22 @@ CREATE TABLE IF NOT EXISTS snap_requests (
     UNIQUE(phone)
 );
 
--- 2. Index
+-- IPs bannies
+CREATE TABLE IF NOT EXISTS banned_ips (
+    id SERIAL PRIMARY KEY,
+    ip_address VARCHAR(45) NOT NULL UNIQUE,
+    reason VARCHAR(255),
+    banned_by VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index
 CREATE INDEX IF NOT EXISTS idx_snap_requests_username ON snap_requests(username);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_phone ON snap_requests(phone);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_status ON snap_requests(status);
 CREATE INDEX IF NOT EXISTS idx_snap_requests_created_at ON snap_requests(created_at DESC);
 
--- 3. Logs
+-- Logs
 CREATE TABLE IF NOT EXISTS snap_logs (
     id SERIAL PRIMARY KEY,
     request_id INTEGER REFERENCES snap_requests(id) ON DELETE SET NULL,
@@ -38,7 +48,7 @@ CREATE TABLE IF NOT EXISTS snap_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Stats
+-- Stats
 CREATE TABLE IF NOT EXISTS snap_stats (
     id SERIAL PRIMARY KEY,
     date DATE NOT NULL UNIQUE,
@@ -52,7 +62,7 @@ CREATE TABLE IF NOT EXISTS snap_stats (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. updated_at trigger
+-- updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -67,7 +77,7 @@ CREATE TRIGGER update_snap_requests_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- 6. Stats INSERT trigger
+-- Stats INSERT trigger
 CREATE OR REPLACE FUNCTION update_snap_stats_insert()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -87,7 +97,7 @@ CREATE TRIGGER trigger_update_snap_stats_insert
     FOR EACH ROW
     EXECUTE FUNCTION update_snap_stats_insert();
 
--- 7. Stats UPDATE trigger (gère tous les changements de statut)
+-- Stats UPDATE trigger
 CREATE OR REPLACE FUNCTION update_snap_stats_update()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -109,7 +119,7 @@ BEGIN
             completed_requests = completed_requests + 1,
             updated_at = CURRENT_TIMESTAMP
         WHERE date = CURRENT_DATE;
-    ELSIF OLD.status = 'pending' AND NEW.status = 'failed' THEN
+    ELSIF OLD.status = 'pending' AND NEW.status = 'wrong_number' THEN
         UPDATE snap_stats 
         SET pending_requests = GREATEST(pending_requests - 1, 0),
             failed_requests = failed_requests + 1,

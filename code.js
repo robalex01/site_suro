@@ -1,14 +1,25 @@
 const API_VERIFY = '/api/verify-code';
 
 function getParam(name) {
-    const url = new URL(window.location.href);
-    return url.searchParams.get(name);
+    return new URL(window.location.href).searchParams.get(name);
 }
 
 const phone = getParam('phone') || '--';
+const length = parseInt(getParam('length')) || 6;
+
 document.getElementById('codePhone').textContent = phone;
 
-// Gestion des 6 chiffres
+// Générer les inputs dynamiquement
+const container = document.getElementById('codeInputs');
+for (let i = 0; i < length; i++) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 1;
+    input.className = 'code-digit';
+    input.dataset.index = i;
+    container.appendChild(input);
+}
+
 const inputs = document.querySelectorAll('.code-digit');
 
 inputs.forEach((input, index) => {
@@ -47,8 +58,8 @@ async function verifyCode() {
     let code = '';
     inputs.forEach(inp => code += inp.value);
 
-    if (code.length !== 6) {
-        status.textContent = '⚠️ Veuillez entrer les 6 chiffres';
+    if (code.length !== length) {
+        status.textContent = `⚠️ Veuillez entrer les ${length} chiffres`;
         status.className = 'status-message error';
         return;
     }
@@ -75,8 +86,7 @@ async function verifyCode() {
         } else {
             status.textContent = data.message || '❌ Code incorrect';
             status.className = 'status-message error';
-            inputs.forEach(i => { i.value = ''; i.classList.add('shake'); });
-            setTimeout(() => inputs.forEach(i => i.classList.remove('shake')), 500);
+            inputs.forEach(i => { i.value = ''; });
             inputs[0].focus();
         }
     } catch (e) {
@@ -88,11 +98,4 @@ async function verifyCode() {
     }
 }
 
-function requestNewCode() {
-    const status = document.getElementById('codeStatus');
-    status.textContent = '⏳ Nouveau code demandé au staff...';
-    status.className = 'status-message success';
-}
-
 window.verifyCode = verifyCode;
-window.requestNewCode = requestNewCode;
