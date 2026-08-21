@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, REST, Routes } from 'discord.js';
 import { neon } from '@neondatabase/serverless';
 
 // ─── CONFIG ───
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const GUILD_ID = process.env.DISCORD_GUILD_ID;       // Serveur où les commandes sont déployées
+const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
 const DATABASE_URL = process.env.DATABASE_URL;
 const STAFF_SECRET = process.env.STAFF_SECRET;
@@ -12,6 +13,7 @@ const API_BASE = process.env.API_BASE || 'https://snaptech.vercel.app';
 
 if (!TOKEN || !CLIENT_ID || !DATABASE_URL) {
     console.error('❌ Variables manquantes : DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID, DATABASE_URL');
+    console.error('   Vérifie ton fichier .env et relance le bot.');
     process.exit(1);
 }
 
@@ -64,6 +66,8 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 // ─── EVENTS ───
 client.once('ready', () => {
     console.log(`🤖 Bot connecté en tant que ${client.user.tag}`);
+    console.log(`📡 API Base: ${API_BASE}`);
+    console.log(`📝 Salon logs: ${LOG_CHANNEL_ID || 'Non configuré — utilise /config'}`);
     startPolling();
 });
 
@@ -92,7 +96,10 @@ async function startPolling() {
 
 async function sendNewRequestEmbed(row) {
     const channel = client.channels.cache.get(LOG_CHANNEL_ID);
-    if (!channel) return;
+    if (!channel) {
+        console.log(`⚠️ Salon ${LOG_CHANNEL_ID} non trouvé. Utilise /config salon:#ton-salon`);
+        return;
+    }
 
     const carrierNames = {
         'orange': 'Orange', 'sfr': 'SFR', 'bouygues': 'Bouygues',
@@ -150,7 +157,6 @@ client.on('interactionCreate', async interaction => {
                     content: `✅ Demande **${phone}** prise en charge !\n\nEnvoyez maintenant le code SMS avec :\n\`/sendcode phone:${phone} code:123456\``
                 });
 
-                // Mettre à jour le message original
                 const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0x3b82f6)
                     .setTitle('📱 Demande en cours de traitement')
