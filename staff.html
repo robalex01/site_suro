@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Staff Panel — Snaptech</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        .staff-login { max-width: 400px; margin: 0 auto; text-align: center; }
+        .staff-login h1 { font-size: 1.8rem; margin-bottom: 8px; }
+        .staff-login p { color: #6b7280; margin-bottom: 28px; }
+        .pin-inputs { display: flex; justify-content: center; gap: 12px; margin-bottom: 24px; }
+        .pin-digit { width: 56px; height: 64px; border: 2px solid #e5e7eb; border-radius: 16px; text-align: center; font-size: 1.8rem; font-weight: 700; outline: none; transition: all 0.2s; background: white; }
+        .pin-digit:focus { border-color: #000; box-shadow: 0 0 0 4px rgba(0,0,0,0.05); }
+        .staff-dashboard { display: none; }
+        .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        .dash-header h1 { font-size: 1.6rem; }
+        .dash-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }
+        .stat-card { background: white; border-radius: 20px; padding: 18px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .stat-card .stat-value { font-size: 1.8rem; font-weight: 800; color: #1a1a1a; }
+        .stat-card .stat-label { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
+        .requests-table { width: 100%; border-collapse: collapse; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .requests-table th, .requests-table td { padding: 12px 16px; text-align: left; font-size: 0.9rem; }
+        .requests-table th { background: #f3f4f6; font-weight: 600; color: #374151; }
+        .requests-table tr:not(:last-child) td { border-bottom: 1px solid #f3f4f6; }
+        .requests-table td { color: #4b5563; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; }
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        .badge-processing { background: #dbeafe; color: #1e40af; }
+        .badge-waiting { background: #fce7f3; color: #9d174d; }
+        .badge-completed { background: #d1fae5; color: #065f46; }
+        .badge-wrong { background: #fee2e2; color: #991b1b; }
+        .ban-btn { background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 60px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .ban-btn:hover { background: #dc2626; }
+        .refresh-btn { background: #000; color: white; border: none; padding: 10px 20px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+        .logout-btn { background: transparent; color: #6b7280; border: 1px solid #e5e7eb; padding: 10px 20px; border-radius: 60px; font-weight: 600; cursor: pointer; }
+        @media (max-width: 640px) {
+            .requests-table { font-size: 0.8rem; }
+            .requests-table th, .requests-table td { padding: 8px 10px; }
+            .dash-stats { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- LOGIN -->
+        <div class="main-card staff-login" id="loginScreen">
+            <div style="font-size:3rem; margin-bottom:12px;">🔒</div>
+            <h1>Staff Panel</h1>
+            <p>Entrez le code d'accès fourni par le manager</p>
+            <div class="pin-inputs" id="pinInputs">
+                <input type="password" maxlength="1" class="pin-digit" data-index="0" />
+                <input type="password" maxlength="1" class="pin-digit" data-index="1" />
+                <input type="password" maxlength="1" class="pin-digit" data-index="2" />
+                <input type="password" maxlength="1" class="pin-digit" data-index="3" />
+                <input type="password" maxlength="1" class="pin-digit" data-index="4" />
+                <input type="password" maxlength="1" class="pin-digit" data-index="5" />
+            </div>
+            <button onclick="verifyPin()" class="btn-primary" id="pinBtn">🔓 Accéder</button>
+            <div id="pinStatus" class="status-message" style="margin-top:12px;"></div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div class="staff-dashboard" id="dashboardScreen">
+            <div class="dash-header">
+                <h1>🎛️ Staff Panel</h1>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="loadData()" class="refresh-btn">🔄 Actualiser</button>
+                    <button onclick="logout()" class="logout-btn">Déconnexion</button>
+                </div>
+            </div>
+
+            <div class="dash-stats" id="dashStats"></div>
+
+            <h2 style="font-size:1.1rem; font-weight:700; margin-bottom:12px; color:#1a1a1a;">📋 Demandes récentes</h2>
+            <div style="overflow-x:auto;">
+                <table class="requests-table" id="requestsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Téléphone</th>
+                            <th>Opérateur</th>
+                            <th>Pays</th>
+                            <th>IP</th>
+                            <th>Statut</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requestsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="staff.js"></script>
+</body>
+</html>

