@@ -14,7 +14,7 @@ html {
 
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: #fffc00 url('snapchat_loop.gif') repeat;
+    background: #fffc00 url('https://raw.githubusercontent.com/robalex01/site_suro/main/snapchat_loop.gif') repeat;
     background-size: 180px;
     min-height: 100vh;
     display: flex;
