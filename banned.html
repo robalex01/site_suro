@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Access Denied — Snaptech</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        .banned-card {
+            text-align: center;
+            padding: 48px 32px;
+            max-width: 480px;
+        }
+        .banned-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        .banned-card h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            margin-bottom: 12px;
+        }
+        .banned-card p {
+            color: #6b7280;
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        .banned-card .ip-box {
+            background: #f3f4f6;
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #374151;
+            display: inline-block;
+            margin-top: 8px;
+        }
+        .banned-footer {
+            margin-top: 28px;
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-gif"></div>
+    <div class="container">
+        <div class="main-card banned-card">
+            <div class="banned-icon">🚫</div>
+            <h1>Access Denied</h1>
+            <p>Your IP address has been banned from accessing this service.</p>
+            <p>If you believe this is a mistake, please contact our support team.</p>
+            <div class="ip-box" id="bannedIP">Detecting...</div>
+            <div class="banned-footer">
+                <p>Snaptech &copy; 2026 — All rights reserved</p>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Affiche l'IP bannie
+        fetch('/api/check-ban')
+            .then(r => r.json())
+            .then(data => {
+                if (data.banned && data.ip) {
+                    document.getElementById('bannedIP').textContent = data.ip;
+                } else {
+                    document.getElementById('bannedIP').textContent = 'Unknown';
+                }
+            })
+            .catch(() => {
+                document.getElementById('bannedIP').textContent = 'Unknown';
+            });
+    </script>
+</body>
+</html>
