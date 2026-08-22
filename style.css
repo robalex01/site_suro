@@ -14,7 +14,8 @@ html {
 
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: linear-gradient(135deg, #fffc00 0%, #ffe100 50%, #ffcc00 100%);
+    background: #fffc00 url('snapchat_loop.gif') repeat;
+    background-size: 180px;
     min-height: 100vh;
     display: flex;
     align-items: center;
