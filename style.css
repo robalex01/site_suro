@@ -33,7 +33,22 @@ body {
     width: 100%;
     height: 100%;
     background: #fffc00 url('snapchat_loop.gif') repeat;
-    background-size: 180px;
+    background-size: 300px;
+    background-position: center top;
+    image-rendering: auto;
+    z-index: -2;
+    pointer-events: none;
+}
+
+/* Overlay blanc très léger pour unifier le fond et cacher les joints */
+.bg-gif::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 252, 0, 0.25);
     z-index: -1;
     pointer-events: none;
 }
@@ -709,7 +724,7 @@ select.form-control {
         padding-top: 20px;
     }
     .bg-gif {
-        background-size: 140px;
+        background-size: 200px;
     }
 
     .container {
