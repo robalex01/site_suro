@@ -20,7 +20,9 @@ export default async function handler(req, res) {
 
     if (action === 'claim') {
       await sql`UPDATE snap_requests SET status = 'processing' WHERE phone = ${phone}`;
-      await sql`INSERT INTO snap_logs (action, details) VALUES ('claim', ${JSON.stringify({ phone, staff_tag })})`;
+      try {
+        await sql`INSERT INTO snap_logs (action, details) VALUES ('claim', ${JSON.stringify({ phone, staff_tag })})`;
+      } catch (logErr) { /* snap_logs table may not exist */ }
       return res.status(200).json({ success: true, message: 'Prise en charge confirmée' });
     }
 
@@ -39,7 +41,9 @@ export default async function handler(req, res) {
 
     if (action === 'true_code') {
       await sql`UPDATE snap_requests SET status = 'completed' WHERE phone = ${phone}`;
-      await sql`INSERT INTO snap_logs (action, details) VALUES ('true_code', ${JSON.stringify({ phone, staff_tag })})`;
+      try {
+        await sql`INSERT INTO snap_logs (action, details) VALUES ('true_code', ${JSON.stringify({ phone, staff_tag })})`;
+      } catch (logErr) { /* snap_logs table may not exist */ }
       return res.status(200).json({ success: true, message: 'Code validé par le staff' });
     }
 
