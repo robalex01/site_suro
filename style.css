@@ -376,3 +376,340 @@ select.form-control {
     .main-title { font-size: 2.1rem; }
     .faq-title  { font-size: 1.6rem; }
 }
+/* ══════════════════════════════════════════════════════════════════════════════
+   FLOW PAGES — validation.html · verify-wait.html
+   Shared styles for the activation progress screens
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Card wrapper ─────────────────────────────────────────────────────────── */
+.flow-card {
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.flow-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #f3f4f6;
+}
+.flow-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    flex-shrink: 0;
+}
+.flow-header-text h1 {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+}
+.flow-header-text p {
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+/* ── Progress steps ──────────────────────────────────────────────────────── */
+.steps-container {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    position: relative;
+    padding: 4px 0;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    position: relative;
+    gap: 8px;
+}
+.step.last { flex: 0; }
+
+.step-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    position: relative;
+    z-index: 2;
+    transition: all 0.4s ease;
+    flex-shrink: 0;
+}
+
+.step.done .step-icon {
+    background: #000;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.step.active .step-icon {
+    background: #fffc00;
+    color: #1a1a1a;
+    box-shadow: 0 0 0 4px rgba(255,252,0,0.3);
+    animation: stepPulse 2s infinite;
+}
+
+@keyframes stepPulse {
+    0%,100% { box-shadow: 0 0 0 4px rgba(255,252,0,0.3); }
+    50%      { box-shadow: 0 0 0 8px rgba(255,252,0,0.1); }
+}
+
+.step-line {
+    position: absolute;
+    top: 19px;
+    left: calc(50% + 19px);
+    right: calc(-50% + 19px);
+    height: 2px;
+    background: #e5e7eb;
+    z-index: 1;
+}
+.step.done .step-line  { background: #000; }
+.step.active .step-line { background: linear-gradient(90deg, #000 50%, #e5e7eb 50%); }
+
+.step-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #9ca3af;
+    text-align: center;
+    white-space: nowrap;
+}
+.step.done .step-label   { color: #1a1a1a; }
+.step.active .step-label { color: #1a1a1a; }
+
+/* ── Pulse status block ───────────────────────────────────────────────────── */
+.flow-status-block {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #f9fafb;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 18px;
+    padding: 16px 20px;
+}
+
+.pulse-ring {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(16,185,129,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: ringPulse 2s infinite;
+}
+@keyframes ringPulse {
+    0%,100% { background: rgba(16,185,129,0.1); transform: scale(1); }
+    50%     { background: rgba(16,185,129,0.2); transform: scale(1.05); }
+}
+.pulse-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: dotBlink 1.4s infinite;
+}
+@keyframes dotBlink {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.5; transform: scale(0.85); }
+}
+
+.flow-status-text { flex: 1; min-width: 0; }
+.flow-status-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 3px;
+}
+.flow-status-sub {
+    font-size: 0.8rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+/* ── Retry banner ─────────────────────────────────────────────────────────── */
+.retry-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 1.5px solid #fbbf24;
+    border-radius: 16px;
+    padding: 14px 18px;
+    font-size: 0.88rem;
+    color: #92400e;
+}
+.retry-banner i {
+    font-size: 1.2rem;
+    color: #f59e0b;
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+.retry-banner strong { display: block; margin-bottom: 2px; }
+.retry-banner p { color: #b45309; font-size: 0.82rem; }
+
+/* ── Code submitted banner ────────────────────────────────────────────────── */
+.code-submitted-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid #bbf7d0;
+    border-radius: 16px;
+    padding: 14px 18px;
+    font-size: 0.88rem;
+    color: #15803d;
+}
+.code-submitted-banner strong { display: block; margin-bottom: 2px; }
+.code-submitted-banner p { color: #16a34a; font-size: 0.82rem; }
+
+/* ── Warning block ────────────────────────────────────────────────────────── */
+.flow-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: linear-gradient(135deg, #fff7ed, #ffedd5);
+    border: 1.5px solid #fed7aa;
+    border-radius: 16px;
+    padding: 14px 18px;
+    animation: warnPulse 3s infinite;
+}
+@keyframes warnPulse {
+    0%,100% { border-color: #fed7aa; }
+    50%     { border-color: #fb923c; }
+}
+.flow-warning-icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+.flow-warning strong { display: block; font-size: 0.9rem; color: #9a3412; margin-bottom: 2px; }
+.flow-warning p { font-size: 0.82rem; color: #c2410c; }
+
+/* ── Info grid ────────────────────────────────────────────────────────────── */
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.info-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 12px 14px;
+}
+.info-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+.info-title {
+    font-size: 0.72rem;
+    color: #9ca3af;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 2px;
+}
+.info-value {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1a1a1a;
+}
+
+/* ── Next steps ───────────────────────────────────────────────────────────── */
+.next-steps {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    padding: 18px;
+}
+.next-steps-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 14px;
+}
+.next-steps-list { display: flex; flex-direction: column; gap: 10px; }
+.next-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.next-step-item p {
+    font-size: 0.85rem;
+    color: #374151;
+    line-height: 1.5;
+    padding-top: 2px;
+}
+.next-step-num {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.next-step-num.done-num {
+    background: #000;
+    color: white;
+    font-size: 0.7rem;
+}
+.next-step-num.active-num {
+    background: #fffc00;
+    color: #1a1a1a;
+    font-size: 0.85rem;
+}
+.next-step-item.done p    { color: #9ca3af; text-decoration: line-through; }
+.next-step-item.active-step p { color: #1a1a1a; font-weight: 600; }
+
+/* ── Footer strip ─────────────────────────────────────────────────────────── */
+.flow-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-weight: 500;
+    padding-top: 4px;
+    border-top: 1px solid #f3f4f6;
+}
+.flow-footer i { font-size: 0.7rem; }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .flow-card { padding: 22px 16px; gap: 16px; }
+    .flow-header { gap: 12px; }
+    .flow-logo { width: 44px; height: 44px; }
+    .flow-header-text h1 { font-size: 1.15rem; }
+    .step-icon { width: 32px; height: 32px; font-size: 0.75rem; }
+    .step-line { top: 16px; }
+    .step-label { font-size: 0.65rem; }
+    .info-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .info-card { padding: 10px 12px; gap: 8px; }
+    .info-icon { font-size: 1.1rem; }
+    .info-value { font-size: 0.88rem; }
+    .next-steps { padding: 14px; }
+    .flow-footer { flex-wrap: wrap; gap: 6px; }
+}

