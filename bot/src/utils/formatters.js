@@ -3,8 +3,8 @@ export const CARRIER_NAMES = {
     base: "BASE", orange_be: "Orange Belgium", proximus: "Proximus", telenet: "Telenet"
 };
 
-export function formatPhone(phone) { return "``" + phone + "``"; }
-export function formatIP(ip) { return ip && ip !== "unknown" ? "``" + ip + "``" : "`unknown`"; }
+export function formatPhone(phone) { return "`" + phone + "`"; }
+export function formatIP(ip) { return ip && ip !== "unknown" ? "`" + ip + "`" : "`unknown`"; }
 export function getCarrierName(operator) { return CARRIER_NAMES[operator] || operator; }
 
 export function formatDate(date) {

