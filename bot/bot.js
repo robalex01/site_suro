@@ -8,6 +8,20 @@ import { handleSlash } from "./src/handlers/slash.js";
 
 validateConfig();
 
+// ─── Process-level safety net ──────────────────────────────────────────────
+// Under heavy load (many concurrent requests/interactions), a single
+// unexpected rejection anywhere that isn't explicitly caught can otherwise
+// bring the whole Node process down silently (no crash log, systemd/Docker
+// just sees it exit and restart, dropping whatever was in flight). Logging
+// instead of crashing keeps the bot serving everyone else while the one bad
+// interaction gets investigated from the logs.
+process.on("unhandledRejection", (reason) => {
+    console.error("❌ Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+    console.error("❌ Uncaught exception:", err);
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,

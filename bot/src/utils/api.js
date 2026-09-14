@@ -1,11 +1,22 @@
 /**
  * api.js — Centralized fetch wrapper for the Snaptech API
- * Provides timeout, consistent error handling and logging.
+ * Provides timeout, retry-with-backoff and consistent error handling/logging.
+ *
+ * v3.2: Under load, the Vercel API can be slow to respond (cold starts,
+ * DB latency) and a single timeout used to surface immediately as a hard
+ * failure to staff ("Network error while claiming"). Transient failures
+ * (timeout, network error, 5xx) now get a couple of quick retries before
+ * giving up — 4xx errors (e.g. the 409 double-claim guard) are NOT retried
+ * since they're a correct, final answer from the server.
  */
 
 import { CONFIG } from "../config.js";
 
-const FETCH_TIMEOUT_MS = 8000;
+const FETCH_TIMEOUT_MS = 10000;
+const MAX_RETRIES       = 2;
+const RETRY_DELAY_MS    = 400;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchWithTimeout(url, options = {}) {
     const controller = new AbortController();
@@ -15,6 +26,34 @@ async function fetchWithTimeout(url, options = {}) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+/**
+ * Like fetchWithTimeout, but retries on transient failures (timeout/network
+ * error, or HTTP 5xx). Never retries 4xx — those are final answers (bad
+ * request, unauthorized, 409 conflict, etc.) and retrying would just waste
+ * time or double-submit an action.
+ */
+async function fetchWithRetry(url, options = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const res = await fetchWithTimeout(url, options);
+            if (res.status >= 500 && attempt < MAX_RETRIES) {
+                lastErr = new Error(`API ${res.status}`);
+                await sleep(RETRY_DELAY_MS * (attempt + 1));
+                continue;
+            }
+            return res;
+        } catch (e) {
+            lastErr = e;
+            if (attempt < MAX_RETRIES) {
+                await sleep(RETRY_DELAY_MS * (attempt + 1));
+                continue;
+            }
+        }
+    }
+    throw lastErr;
 }
 
 /**
@@ -35,7 +74,7 @@ export async function callStaffAction(action, phone, staffTag, length = null, di
     if (length       !== null) body.length          = length;
     if (discordUserId !== null) body.discord_user_id = discordUserId;
 
-    const res = await fetchWithTimeout(CONFIG.API_BASE + "/api/staff-action", {
+    const res = await fetchWithRetry(CONFIG.API_BASE + "/api/staff-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -55,7 +94,7 @@ export async function callStaffAction(action, phone, staffTag, length = null, di
  * @param {string} bannedBy - Discord tag
  */
 export async function callBanIP(ip, bannedBy) {
-    const res = await fetchWithTimeout(CONFIG.API_BASE + "/api/ban-ip", {
+    const res = await fetchWithRetry(CONFIG.API_BASE + "/api/ban-ip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ip, secret: CONFIG.STAFF_SECRET, banned_by: bannedBy }),

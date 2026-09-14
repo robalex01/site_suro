@@ -32,14 +32,26 @@ export async function handleSlash(interaction) {
 
     // ─── CONFIG ───────────────────────────────────────────────────────────────
     if (commandName === "config") {
-        const channel = interaction.options.getChannel("channel");
-        // Persist in process.env for this session (use a real store for multi-restart)
-        process.env.DISCORD_LOG_CHANNEL_ID = channel.id;
-        CONFIG.LOG_CHANNEL_ID = channel.id;
-        await interaction.reply({
-            content: `✅ Log channel set to <#${channel.id}>`,
-            flags: 64,
-        });
+        const channel   = interaction.options.getChannel("channel");
+        const operateur = interaction.options.getString("operateur");
+
+        if (operateur) {
+            // Per-operator channel (Orange / SFR / Bouygues / Belgium)
+            // Persisted in-memory for this session (use a real store for multi-restart).
+            CONFIG.CHANNELS[operateur] = channel.id;
+            await interaction.reply({
+                content: `✅ Salon **${operateur}** défini sur <#${channel.id}>`,
+                flags: 64,
+            });
+        } else {
+            // Default / fallback channel (used for any operator without a dedicated channel)
+            process.env.DISCORD_LOG_CHANNEL_ID = channel.id;
+            CONFIG.LOG_CHANNEL_ID = channel.id;
+            await interaction.reply({
+                content: `✅ Salon par défaut défini sur <#${channel.id}>`,
+                flags: 64,
+            });
+        }
         return;
     }
 

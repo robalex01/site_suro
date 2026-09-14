@@ -47,12 +47,20 @@ export async function logAction(action, details) {
 
 // ─── Polling queries ──────────────────────────────────────────────────────────
 
-export async function getPendingRequests(lastId) {
+/**
+ * Returns pending requests updated after `since`.
+ * Timestamp-based (like getCodeSubmittedRequests) so a request that gets
+ * reset back to 'pending' on an EXISTING row (e.g. re-submitted after
+ * wrong_number, or a safe upsert reset) is detected too — not just brand
+ * new INSERTs. An id-based cursor misses these, leaving the request stuck
+ * invisible in the DB while the old Discord message goes stale.
+ */
+export async function getPendingRequests(since) {
     return await sql`
         SELECT id, username, phone, operator, country, city, ip_address, status, created_at, updated_at
         FROM snap_requests
-        WHERE id > ${lastId} AND status = ${"pending"}
-        ORDER BY id ASC
+        WHERE status = ${"pending"} AND updated_at > ${since.toISOString()}
+        ORDER BY updated_at ASC
     `;
 }
 
