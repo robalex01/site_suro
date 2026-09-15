@@ -16,9 +16,9 @@
 
 import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
 import { CONFIG, getChannelIdForOperator } from "./config.js";
-import { getPendingRequests, getCodeSubmittedRequests, getClaimedBy } from "./database.js";
+import { getPendingRequests, getCodeSubmittedRequests } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
-import { claimedBy } from "./handlers/buttons.js";
+import { getClaimer } from "./utils/claimStore.js";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -78,9 +78,10 @@ async function sendNewRequest(client, row) {
 
     try {
         await channel.send({
-            content: CONFIG.PING_MESSAGE || undefined,
+            content: CONFIG.PING_MESSAGE || `<@&${CONFIG.ACCESS_ROLE_ID}>`,
             embeds: [embed],
             components: [new ActionRowBuilder().addComponents(...buttons)],
+            allowedMentions: { roles: [CONFIG.ACCESS_ROLE_ID] },
         });
         console.log("📨 New request sent to Discord:", row.phone);
         return true;
@@ -112,12 +113,8 @@ async function sendCodeSubmitted(client, row) {
     if (banBtn) buttons.push(banBtn);
     const components = [new ActionRowBuilder().addComponents(...buttons)];
 
-    // Resolve the claimer — in-memory first, DB fallback after a bot restart.
-    let claimerId = claimedBy.get(row.phone) ?? null;
-    if (!claimerId) {
-        claimerId = await getClaimedBy(row.phone);
-        if (claimerId) claimedBy.set(row.phone, claimerId);
-    }
+    // Resolve the claimer via the shared claimStore (in-memory + DB fallback, cached).
+    const claimerId = await getClaimer(row.phone);
 
     if (claimerId) {
         try {
@@ -206,8 +203,17 @@ async function pollCodeSubmitted(client) {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
+/**
+ * OPTIMIZATION: previously pollPending and pollCodeSubmitted each had their
+ * own setInterval, both firing every 5s independently — two separate timers
+ * doing the same job. Combined into one interval that runs both checks
+ * concurrently (Promise.all) each tick: one less timer, and the two DB
+ * round-trips happen in parallel instead of back-to-back.
+ */
 export function startPolling(client) {
     console.log(`🔄 Polling started — interval: ${POLL_INTERVAL_MS / 1000}s`);
-    setInterval(() => pollPending(client), POLL_INTERVAL_MS);
-    setInterval(() => pollCodeSubmitted(client), POLL_INTERVAL_MS);
+    setInterval(() => {
+        Promise.all([pollPending(client), pollCodeSubmitted(client)])
+            .catch(e => console.error("❌ Poll tick error:", e.message || e));
+    }, POLL_INTERVAL_MS);
 }

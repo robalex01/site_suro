@@ -15,6 +15,9 @@ export const CONFIG = {
     // Set DISCORD_PING_MESSAGE in .env if you want a ping.
     PING_MESSAGE:   process.env.DISCORD_PING_MESSAGE || null,
 
+    // Role pinged on brand-new requests (before anyone claims them).
+    ACCESS_ROLE_ID: process.env.ACCESS_ROLE_ID || "1546160211054559334",
+
     // Per-operator channel routing — falls back to LOG_CHANNEL_ID if unset.
     // "belgium" groups BASE, Orange Belgium, Proximus and Telenet into one channel.
     CHANNELS: {

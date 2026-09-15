@@ -2,6 +2,20 @@
  * api.js — Centralized fetch wrapper for the Snaptech API
  * Provides timeout, retry-with-backoff and consistent error handling/logging.
  *
+ * v3.3 — Fixed a bug that mislabeled expected 409 "already claimed" conflicts
+ * (and any other 4xx business response) as generic network errors:
+ *   OLD: any non-2xx status → throw Error("API 409: {json text}")
+ *        → callers caught it in their generic catch block and showed a
+ *          hardcoded "Network error while claiming" message, throwing away
+ *          the real server message ("Cette demande est déjà claim...").
+ *   NEW: the server ALWAYS replies with a JSON {success, message} body, even
+ *        for 4xx conflicts — that's a normal, expected answer, not a failure.
+ *        We only throw for genuine transport failures: no response at all
+ *        (handled by fetchWithRetry throwing already), an unparseable body,
+ *        or a 5xx that survived every retry. Everything else — including
+ *        401 Unauthorized and 409 Conflict — is returned as-is so callers'
+ *        existing `if (!data.success)` branches see the real message.
+ *
  * v3.2: Under load, the Vercel API can be slow to respond (cold starts,
  * DB latency) and a single timeout used to surface immediately as a hard
  * failure to staff ("Network error while claiming"). Transient failures
@@ -57,6 +71,33 @@ async function fetchWithRetry(url, options = {}) {
 }
 
 /**
+ * Parses a fetch Response as our standard {success, message, ...} JSON body.
+ * - 5xx that exhausted retries → throw (genuine server failure, no useful
+ *   business message to show, callers should fall back to their generic
+ *   "network error" handling).
+ * - Anything else (2xx OR 4xx) → return the parsed JSON. A 4xx here is a
+ *   normal, final answer from the server (bad secret, already claimed,
+ *   not found, etc.), not a transport failure — the caller's `data.success`
+ *   check is what's meant to handle it, using the real `data.message`.
+ * - Unparseable body on an otherwise-ok-ish response → throw, since we have
+ *   nothing usable to return.
+ */
+async function parseApiResponse(res) {
+    let data;
+    try {
+        data = await res.json();
+    } catch {
+        throw new Error(`API ${res.status}: (invalid/empty JSON response)`);
+    }
+
+    if (!res.ok && res.status >= 500) {
+        throw new Error(`API ${res.status}: ${data?.message || "Server error"}`);
+    }
+
+    return data; // includes 4xx conflicts like 401/404/409 — these are NOT thrown
+}
+
+/**
  * Call /api/staff-action
  * @param {string}      action        - "claim" | "unclaim" | "set_length" | "wrong_number" | "true_code" | "false_code"
  * @param {string}      phone
@@ -80,12 +121,7 @@ export async function callStaffAction(action, phone, staffTag, length = null, di
         body: JSON.stringify(body),
     });
 
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`API ${res.status}: ${text}`);
-    }
-
-    return res.json();
+    return parseApiResponse(res);
 }
 
 /**
@@ -100,10 +136,5 @@ export async function callBanIP(ip, bannedBy) {
         body: JSON.stringify({ ip, secret: CONFIG.STAFF_SECRET, banned_by: bannedBy }),
     });
 
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`API ${res.status}: ${text}`);
-    }
-
-    return res.json();
+    return parseApiResponse(res);
 }
