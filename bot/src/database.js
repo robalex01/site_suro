@@ -2,10 +2,91 @@
  * database.js — Neon PostgreSQL queries
  */
 
+import os from "node:os";
 import { neon } from "@neondatabase/serverless";
 import { CONFIG } from "./config.js";
 
 export const sql = neon(CONFIG.DATABASE_URL);
+
+// ─── Single-instance lock ──────────────────────────────────────────────────────
+//
+// Guards against two bot processes (e.g. an orphaned process from a bad
+// restart) both logging into Discord with the same token and both trying to
+// handle every button interaction — which is exactly what produces a storm
+// of "Unknown interaction" / "already acknowledged" errors (only one of the
+// two racing processes can win each ack).
+//
+// One row, id=1. Whoever holds a fresh (recently-renewed) heartbeat owns the
+// lock. The acquire query is a single atomic UPSERT — its WHERE clause only
+// lets the update through if the existing lock is stale, so two processes
+// starting at the same instant can't both succeed (Postgres row-locks the
+// row during the UPDATE, so they're serialized and only the first sees a
+// stale row).
+
+async function ensureLockTable() {
+    await sql`
+        CREATE TABLE IF NOT EXISTS bot_instance_lock (
+            id             INTEGER PRIMARY KEY DEFAULT 1,
+            instance_id    TEXT NOT NULL,
+            hostname       TEXT,
+            pid            INTEGER,
+            started_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT bot_instance_lock_single_row CHECK (id = 1)
+        )
+    `;
+}
+
+/**
+ * Attempts to become the single active instance.
+ * @returns {Promise<{acquired: true} | {acquired: false, heldBy: object}>}
+ */
+export async function acquireInstanceLock(instanceId, staleAfterSeconds = 30) {
+    await ensureLockTable();
+
+    const rows = await sql`
+        INSERT INTO bot_instance_lock (id, instance_id, hostname, pid, started_at, last_heartbeat)
+        VALUES (1, ${instanceId}, ${os.hostname()}, ${process.pid}, now(), now())
+        ON CONFLICT (id) DO UPDATE
+            SET instance_id    = EXCLUDED.instance_id,
+                hostname       = EXCLUDED.hostname,
+                pid            = EXCLUDED.pid,
+                started_at     = now(),
+                last_heartbeat = now()
+        WHERE bot_instance_lock.last_heartbeat < now() - (${staleAfterSeconds}::text || ' seconds')::interval
+        RETURNING instance_id, started_at
+    `;
+
+    if (rows.length > 0) return { acquired: true };
+
+    const [current] = await sql`
+        SELECT instance_id, hostname, pid, started_at, last_heartbeat FROM bot_instance_lock WHERE id = 1
+    `;
+    return { acquired: false, heldBy: current };
+}
+
+/**
+ * Refreshes our heartbeat. Returns false if we no longer hold the lock
+ * (someone else's instance_id is now in the row) — the caller must then
+ * shut down immediately to stop handling interactions in parallel with
+ * whoever took over.
+ */
+export async function renewInstanceLock(instanceId) {
+    const rows = await sql`
+        UPDATE bot_instance_lock
+        SET last_heartbeat = now()
+        WHERE id = 1 AND instance_id = ${instanceId}
+        RETURNING instance_id
+    `;
+    return rows.length > 0;
+}
+
+/** Best-effort release on graceful shutdown, so a fast restart doesn't have to wait out the stale timeout. */
+export async function releaseInstanceLock(instanceId) {
+    try {
+        await sql`DELETE FROM bot_instance_lock WHERE id = 1 AND instance_id = ${instanceId}`;
+    } catch { /* best-effort */ }
+}
 
 // ─── Single-row lookups ───────────────────────────────────────────────────────
 

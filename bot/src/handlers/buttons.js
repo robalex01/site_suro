@@ -59,11 +59,25 @@ import { setClaimer, clearClaimer, getClaimer, peekClaimer } from "../utils/clai
  * that's the user's real intent and the channel embed is the real feedback.
  */
 async function safeDefer(interaction) {
+    const start = Date.now();
     try {
         await interaction.deferReply({ flags: 64 });
+        const tookMs = Date.now() - start;
+        // Visible even on SUCCESS now — previously only failures were logged,
+        // so there was no way to tell if defers were chronically slow but
+        // just barely squeaking under the 3s limit. >1000ms here means
+        // Discord REST latency from this host is a real, ongoing problem.
+        if (tookMs > 1000) {
+            console.warn(`⏱️  deferReply for ${interaction.id} took ${tookMs}ms to succeed — Discord REST latency from this host is high.`);
+        }
         return true;
     } catch (e) {
-        console.warn(`⚠️  Could not defer interaction ${interaction.id} (expired token?):`, e.message);
+        const tookMs   = Date.now() - start;
+        const ageAtCallMs = start - interaction.createdTimestamp;
+        console.warn(
+            `⚠️  Could not defer interaction ${interaction.id} after ${tookMs}ms of trying ` +
+            `(interaction was already ${ageAtCallMs}ms old when we started the call): ${e.message}`
+        );
         return false;
     }
 }
@@ -196,6 +210,18 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage) {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function handleButton(interaction) {
+    // Diagnostic: how old was this interaction by the time our code even saw
+    // it? If this is already close to (or over) 3000ms, the delay is
+    // upstream of us — gateway dispatch lag or the event loop being blocked
+    // — and no amount of retrying deferReply faster will fix it. If this is
+    // small but deferReply itself still times out (see safeDefer's own
+    // logging), the problem is specifically the outbound REST call to
+    // Discord being slow from this host/network.
+    const receivedAgeMs = Date.now() - interaction.createdTimestamp;
+    if (receivedAgeMs > 1200) {
+        console.warn(`⏱️  Interaction ${interaction.id} was already ${receivedAgeMs}ms old when handleButton started (gateway dispatch delay or blocked event loop).`);
+    }
+
     const [action, ...rest] = interaction.customId.split("_");
     const payload = rest.join("_");
 
