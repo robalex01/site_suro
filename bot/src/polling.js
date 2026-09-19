@@ -19,6 +19,7 @@ import { CONFIG, getChannelIdForOperator } from "./config.js";
 import { getPendingRequests, getCodeSubmittedRequests } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { getClaimer } from "./utils/claimStore.js";
+import { rememberMessage } from "./utils/messageStore.js";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -67,22 +68,25 @@ async function sendNewRequest(client, row) {
     if (!channel) return true; // no channel configured — not a delivery failure, don't retry forever
 
     const embed = buildNewRequestEmbed(row);
+    // NOTE: no Ban IP button here on purpose — this is the very first embed
+    // a request gets (before any staff has even looked at it), so banning
+    // is deliberately kept off it. It still appears on every embed after
+    // this one (post-claim, code submitted, unclaimed, etc.).
     const buttons = [
         new ButtonBuilder()
             .setCustomId("claim_" + row.phone)
             .setLabel("📋 Claim")
             .setStyle(ButtonStyle.Primary),
     ];
-    const banBtn = createBanIPButton(row.ip_address);
-    if (banBtn) buttons.push(banBtn);
 
     try {
-        await channel.send({
+        const sent = await channel.send({
             content: CONFIG.PING_MESSAGE || `<@&${CONFIG.ACCESS_ROLE_ID}>`,
             embeds: [embed],
             components: [new ActionRowBuilder().addComponents(...buttons)],
             allowedMentions: { roles: [CONFIG.ACCESS_ROLE_ID] },
         });
+        rememberMessage(row.phone, channel.id, sent.id);
         console.log("📨 New request sent to Discord:", row.phone);
         return true;
     } catch (e) {

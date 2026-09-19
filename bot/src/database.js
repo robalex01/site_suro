@@ -88,6 +88,134 @@ export async function releaseInstanceLock(instanceId) {
     } catch { /* best-effort */ }
 }
 
+// ─── Request → channel message tracking ─────────────────────────────────────
+//
+// The True/False Code buttons are sent to the claimer's DMs (never posted
+// in the channel), so an interaction on them arrives with `interaction.message`
+// pointing at the DM, not the original public request embed. To still
+// refresh that original channel message (so staff watching the channel see
+// the outcome, not just whoever got the DM), we need a durable phone ->
+// {channel, message} lookup that survives a bot restart — an in-memory-only
+// map would go blank on redeploy while a request is mid-flight.
+
+async function ensureRequestMessagesTable() {
+    await sql`
+        CREATE TABLE IF NOT EXISTS bot_request_messages (
+            phone      TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    `;
+}
+
+export async function setRequestMessage(phone, channelId, messageId) {
+    await ensureRequestMessagesTable();
+    await sql`
+        INSERT INTO bot_request_messages (phone, channel_id, message_id, updated_at)
+        VALUES (${phone}, ${channelId}, ${messageId}, now())
+        ON CONFLICT (phone) DO UPDATE
+            SET channel_id = EXCLUDED.channel_id,
+                message_id = EXCLUDED.message_id,
+                updated_at = now()
+    `;
+}
+
+export async function getRequestMessage(phone) {
+    await ensureRequestMessagesTable();
+    const rows = await sql`
+        SELECT channel_id, message_id FROM bot_request_messages WHERE phone = ${phone} LIMIT 1
+    `;
+    return rows[0] || null;
+}
+
+export async function deleteRequestMessage(phone) {
+    try { await sql`DELETE FROM bot_request_messages WHERE phone = ${phone}`; }
+    catch { /* best-effort cleanup, non-fatal */ }
+}
+
+// ─── Per-staff-member preferences ──────────────────────────────────────────────
+//
+// Personal settings (language, whether they want to be pinged, etc.) —
+// scoped to one Discord user ID each. Never touches CONFIG or affects
+// anyone else; this is intentionally separate from bot_instance_lock and
+// every other table that describes bot-wide state.
+
+async function ensureStaffPrefsTable() {
+    await sql`
+        CREATE TABLE IF NOT EXISTS staff_preferences (
+            discord_user_id TEXT PRIMARY KEY,
+            language        TEXT NOT NULL DEFAULT 'en',
+            receive_pings   BOOLEAN NOT NULL DEFAULT true,
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    `;
+}
+
+const DEFAULT_STAFF_PREFS = { language: "en", receive_pings: true };
+
+/** Returns this user's prefs, or the defaults (not yet persisted) if they've never configured anything. */
+export async function getStaffPrefs(discordUserId) {
+    await ensureStaffPrefsTable();
+    const rows = await sql`
+        SELECT language, receive_pings FROM staff_preferences WHERE discord_user_id = ${discordUserId} LIMIT 1
+    `;
+    return rows[0] || { ...DEFAULT_STAFF_PREFS };
+}
+
+/** Partial update — only the keys passed in `patch` are changed, everything else keeps its current (or default) value. */
+export async function upsertStaffPrefs(discordUserId, patch) {
+    await ensureStaffPrefsTable();
+    const current = await getStaffPrefs(discordUserId);
+    const next    = { ...current, ...patch };
+    await sql`
+        INSERT INTO staff_preferences (discord_user_id, language, receive_pings, updated_at)
+        VALUES (${discordUserId}, ${next.language}, ${next.receive_pings}, now())
+        ON CONFLICT (discord_user_id) DO UPDATE
+            SET language      = EXCLUDED.language,
+                receive_pings = EXCLUDED.receive_pings,
+                updated_at    = now()
+    `;
+    return next;
+}
+
+// ─── Static / singleton bot messages ───────────────────────────────────────────
+//
+// For persistent panel messages the bot posts once and then edits in place
+// on every future restart (e.g. the staff-settings panel) rather than
+// spamming a fresh copy every time the process comes back up.
+
+async function ensureStaticMessagesTable() {
+    await sql`
+        CREATE TABLE IF NOT EXISTS bot_static_messages (
+            name       TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    `;
+}
+
+export async function getStaticMessage(name) {
+    await ensureStaticMessagesTable();
+    const rows = await sql`
+        SELECT channel_id, message_id FROM bot_static_messages WHERE name = ${name} LIMIT 1
+    `;
+    return rows[0] || null;
+}
+
+export async function setStaticMessage(name, channelId, messageId) {
+    await ensureStaticMessagesTable();
+    await sql`
+        INSERT INTO bot_static_messages (name, channel_id, message_id, updated_at)
+        VALUES (${name}, ${channelId}, ${messageId}, now())
+        ON CONFLICT (name) DO UPDATE
+            SET channel_id = EXCLUDED.channel_id,
+                message_id = EXCLUDED.message_id,
+                updated_at = now()
+    `;
+}
+
 // ─── Single-row lookups ───────────────────────────────────────────────────────
 
 export async function getRequestByPhone(phone) {

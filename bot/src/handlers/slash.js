@@ -26,9 +26,17 @@ import {
     buildPanelEmbed,
 } from "../utils/embedBuilder.js";
 import { callStaffAction, callBanIP } from "../utils/api.js";
+import { isStaff } from "../utils/permissions.js";
 
 export async function handleSlash(interaction) {
     const { commandName } = interaction;
+
+    // Every command is staff/owner-only — this bot has no commands meant
+    // for general server members. isStaff() also returns true for OWNER.
+    if (!isStaff(interaction.member)) {
+        await interaction.reply({ content: "❌ You don't have permission to use this command.", flags: 64 });
+        return;
+    }
 
     // ─── CONFIG ───────────────────────────────────────────────────────────────
     if (commandName === "config") {

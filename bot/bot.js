@@ -7,6 +7,7 @@ import { slashCommands } from "./src/commands.js";
 import { startPolling } from "./src/polling.js";
 import { handleButton } from "./src/handlers/buttons.js";
 import { handleSlash } from "./src/handlers/slash.js";
+import { postOrUpdateConfigPanel, handleConfigButton, handleConfigSelect } from "./src/handlers/staffConfig.js";
 import { acquireInstanceLock, renewInstanceLock, releaseInstanceLock } from "./src/database.js";
 
 // ─── Force IPv4 DNS resolution ──────────────────────────────────────────────
@@ -165,6 +166,7 @@ client.once("ready", () => {
     console.log(`📡 Gateway ping: ${client.ws.ping}ms`);
     deployCommands().catch(e => console.error("Deploy error:", e));
     startPolling(client);
+    postOrUpdateConfigPanel(client).catch(e => console.error("Staff settings panel error:", e));
 
     // If the gateway connection itself is unhealthy (frequent reconnects,
     // high ping), interactions can arrive to our handler already several
@@ -189,10 +191,26 @@ client.on("shardResume",       (id, replayed) => console.warn(`⚠️  Shard ${i
 client.on("shardError",        (err, id)   => console.error(`❌ Shard ${id} error:`, err.message || err));
 client.on("warn",              (info)      => console.warn("⚠️  discord.js warn:", info));
 
+// Custom IDs prefixed "cfgopen"/"cfgping" belong to the personal staff-
+// settings panel (staffConfig.js), not the request-processing buttons
+// (claim/banip/len4/len6/wrong/unclaim/truecode/falsecode) in buttons.js —
+// routed separately so the two handlers never need to know about each other.
+const CONFIG_BUTTON_ACTIONS = new Set(["cfgopen", "cfgping"]);
+
 client.on("interactionCreate", async interaction => {
     try {
-        if (interaction.isButton())          await handleButton(interaction);
-        if (interaction.isChatInputCommand()) await handleSlash(interaction);
+        if (interaction.isButton()) {
+            const action = interaction.customId.split("_")[0];
+            if (CONFIG_BUTTON_ACTIONS.has(action)) {
+                await handleConfigButton(interaction);
+            } else {
+                await handleButton(interaction);
+            }
+        } else if (interaction.isStringSelectMenu()) {
+            await handleConfigSelect(interaction);
+        } else if (interaction.isChatInputCommand()) {
+            await handleSlash(interaction);
+        }
     } catch (e) {
         console.error("Interaction error:", e);
         if (!interaction.replied && !interaction.deferred) {

