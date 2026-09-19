@@ -58,6 +58,48 @@ const STRINGS = {
         settings_lang_placeholder: "Choose your language",
         settings_ping_enable_btn:  "🔔 Enable pings",
         settings_ping_disable_btn: "🔕 Disable pings",
+        settings_intro:            "These settings apply to **you only**. They change nothing for the bot or for other staff.",
+        settings_reset_btn:        "♻️ Reset to defaults",
+        settings_note_public:      "ℹ️ Request embeds posted in the operator channels stay in English — a single Discord message can't be shown in different languages to different people.",
+
+        emb_retry_title:   "🔄 New Code Pending",
+        emb_retry_desc:    "⚠️ The previous code was **incorrect** — check the new one below.",
+        emb_retry_footer:  "🔁 New attempt  •  Snaptech",
+
+        stats_title:       "📊 Global Statistics",
+        stats_completion:  (pct) => `**Completion rate: ${pct}%**`,
+        stats_total:       "📋 Total",
+        stats_pending:     "⏳ Pending",
+        stats_progress:    "👤 In Progress",
+        stats_waiting:     "⏱️ Awaiting Code",
+        stats_submitted:   "🔓 Code Submitted",
+        stats_completed:   "✅ Completed",
+        stats_retry:       "🔄 Retry",
+        stats_wrong:       "❌ Wrong Number",
+        stats_banned:      "🚫 Banned IPs",
+        stats_today:       "📅 Today",
+        stats_today_line:  (r, c) => `Requests: \`${r}\`  ·  Completed: \`${c}\``,
+
+        today_title:       "📅 Today's Statistics",
+        today_requests:    "📋 Requests Today",
+        today_completed:   "✅ Completed Today",
+
+        ops_title:         "📡 Operator Distribution",
+        ops_desc:          "Requests by mobile carrier",
+
+        lb_title:          "🏆 Staff Leaderboard",
+        lb_desc:           (n) => `Top ${n} staff by code validations`,
+        lb_none:           "*No validations recorded yet.*",
+        lb_validations:    "validations",
+
+        act_title:         "📈 Activity — Last 24h",
+        act_none:          "*No activity in the last 24 hours.*",
+
+        staffact_title:    "👥 Staff Activity",
+        staffact_none:     "*No activity recorded yet.*",
+
+        err_fetch:         "❌ Error fetching data.",
+        err_network:       (m) => `❌ Network error: ${m}`,
 
         config_default_channel:  (ch) => `✅ Default channel set to ${ch}`,
         config_operator_channel: (op, ch) => `✅ Channel for **${op}** set to ${ch}`,
@@ -105,6 +147,48 @@ const STRINGS = {
         settings_lang_placeholder: "Choisis ta langue",
         settings_ping_enable_btn:  "🔔 Activer les pings",
         settings_ping_disable_btn: "🔕 Désactiver les pings",
+        settings_intro:            "Ces réglages ne s'appliquent qu'à **toi**. Ils ne changent rien pour le bot ni pour les autres membres du staff.",
+        settings_reset_btn:        "♻️ Réinitialiser",
+        settings_note_public:      "ℹ️ Les embeds de requête postés dans les salons opérateurs restent en anglais — un même message Discord ne peut pas s'afficher dans une langue différente selon la personne qui le lit.",
+
+        emb_retry_title:   "🔄 Nouveau code en attente",
+        emb_retry_desc:    "⚠️ Le code précédent était **incorrect** — vérifie le nouveau ci-dessous.",
+        emb_retry_footer:  "🔁 Nouvelle tentative  •  Snaptech",
+
+        stats_title:       "📊 Statistiques globales",
+        stats_completion:  (pct) => `**Taux de réussite : ${pct}%**`,
+        stats_total:       "📋 Total",
+        stats_pending:     "⏳ En attente",
+        stats_progress:    "👤 En cours",
+        stats_waiting:     "⏱️ Attente du code",
+        stats_submitted:   "🔓 Code soumis",
+        stats_completed:   "✅ Terminées",
+        stats_retry:       "🔄 Nouvelle tentative",
+        stats_wrong:       "❌ Mauvais numéro",
+        stats_banned:      "🚫 IP bannies",
+        stats_today:       "📅 Aujourd'hui",
+        stats_today_line:  (r, c) => `Requêtes : \`${r}\`  ·  Terminées : \`${c}\``,
+
+        today_title:       "📅 Statistiques du jour",
+        today_requests:    "📋 Requêtes aujourd'hui",
+        today_completed:   "✅ Terminées aujourd'hui",
+
+        ops_title:         "📡 Répartition par opérateur",
+        ops_desc:          "Requêtes par opérateur mobile",
+
+        lb_title:          "🏆 Classement du staff",
+        lb_desc:           (n) => `Top ${n} du staff par codes validés`,
+        lb_none:           "*Aucune validation enregistrée pour le moment.*",
+        lb_validations:    "validations",
+
+        act_title:         "📈 Activité — 24 dernières heures",
+        act_none:          "*Aucune activité sur les 24 dernières heures.*",
+
+        staffact_title:    "👥 Activité du staff",
+        staffact_none:     "*Aucune activité enregistrée pour le moment.*",
+
+        err_fetch:         "❌ Erreur lors de la récupération des données.",
+        err_network:       (m) => `❌ Erreur réseau : ${m}`,
 
         config_default_channel:  (ch) => `✅ Salon par défaut défini sur ${ch}`,
         config_operator_channel: (op, ch) => `✅ Salon pour **${op}** défini sur ${ch}`,
@@ -152,6 +236,48 @@ const STRINGS = {
         settings_lang_placeholder: "Wybierz swój język",
         settings_ping_enable_btn:  "🔔 Włącz pingi",
         settings_ping_disable_btn: "🔕 Wyłącz pingi",
+        settings_intro:            "Te ustawienia dotyczą **tylko Ciebie**. Nie zmieniają niczego dla bota ani dla innych członków obsługi.",
+        settings_reset_btn:        "♻️ Przywróć domyślne",
+        settings_note_public:      "ℹ️ Zgłoszenia publikowane na kanałach operatorów pozostają po angielsku — jedna wiadomość Discord nie może wyświetlać się w różnych językach różnym osobom.",
+
+        emb_retry_title:   "🔄 Oczekiwanie na nowy kod",
+        emb_retry_desc:    "⚠️ Poprzedni kod był **nieprawidłowy** — sprawdź nowy poniżej.",
+        emb_retry_footer:  "🔁 Nowa próba  •  Snaptech",
+
+        stats_title:       "📊 Statystyki globalne",
+        stats_completion:  (pct) => `**Wskaźnik ukończenia: ${pct}%**`,
+        stats_total:       "📋 Łącznie",
+        stats_pending:     "⏳ Oczekujące",
+        stats_progress:    "👤 W trakcie",
+        stats_waiting:     "⏱️ Oczekiwanie na kod",
+        stats_submitted:   "🔓 Kod przesłany",
+        stats_completed:   "✅ Zakończone",
+        stats_retry:       "🔄 Ponowna próba",
+        stats_wrong:       "❌ Zły numer",
+        stats_banned:      "🚫 Zbanowane IP",
+        stats_today:       "📅 Dzisiaj",
+        stats_today_line:  (r, c) => `Zgłoszenia: \`${r}\`  ·  Zakończone: \`${c}\``,
+
+        today_title:       "📅 Statystyki dzisiaj",
+        today_requests:    "📋 Zgłoszenia dzisiaj",
+        today_completed:   "✅ Zakończone dzisiaj",
+
+        ops_title:         "📡 Podział według operatorów",
+        ops_desc:          "Zgłoszenia według operatora komórkowego",
+
+        lb_title:          "🏆 Ranking obsługi",
+        lb_desc:           (n) => `Top ${n} obsługi według zweryfikowanych kodów`,
+        lb_none:           "*Brak zapisanych weryfikacji.*",
+        lb_validations:    "weryfikacji",
+
+        act_title:         "📈 Aktywność — ostatnie 24h",
+        act_none:          "*Brak aktywności w ciągu ostatnich 24 godzin.*",
+
+        staffact_title:    "👥 Aktywność obsługi",
+        staffact_none:     "*Brak zapisanej aktywności.*",
+
+        err_fetch:         "❌ Błąd podczas pobierania danych.",
+        err_network:       (m) => `❌ Błąd sieci: ${m}`,
 
         config_default_channel:  (ch) => `✅ Kanał domyślny ustawiony na ${ch}`,
         config_operator_channel: (op, ch) => `✅ Kanał dla **${op}** ustawiony na ${ch}`,
@@ -199,6 +325,48 @@ const STRINGS = {
         settings_lang_placeholder: "Elige tu idioma",
         settings_ping_enable_btn:  "🔔 Activar menciones",
         settings_ping_disable_btn: "🔕 Desactivar menciones",
+        settings_intro:            "Estos ajustes se aplican **solo a ti**. No cambian nada para el bot ni para el resto del staff.",
+        settings_reset_btn:        "♻️ Restablecer",
+        settings_note_public:      "ℹ️ Los embeds de solicitud publicados en los canales de operador siguen en inglés — un mismo mensaje de Discord no puede mostrarse en idiomas distintos según quien lo lea.",
+
+        emb_retry_title:   "🔄 Nuevo código pendiente",
+        emb_retry_desc:    "⚠️ El código anterior era **incorrecto** — revisa el nuevo abajo.",
+        emb_retry_footer:  "🔁 Nuevo intento  •  Snaptech",
+
+        stats_title:       "📊 Estadísticas globales",
+        stats_completion:  (pct) => `**Tasa de finalización: ${pct}%**`,
+        stats_total:       "📋 Total",
+        stats_pending:     "⏳ Pendientes",
+        stats_progress:    "👤 En curso",
+        stats_waiting:     "⏱️ Esperando código",
+        stats_submitted:   "🔓 Código enviado",
+        stats_completed:   "✅ Completadas",
+        stats_retry:       "🔄 Reintento",
+        stats_wrong:       "❌ Número incorrecto",
+        stats_banned:      "🚫 IP baneadas",
+        stats_today:       "📅 Hoy",
+        stats_today_line:  (r, c) => `Solicitudes: \`${r}\`  ·  Completadas: \`${c}\``,
+
+        today_title:       "📅 Estadísticas de hoy",
+        today_requests:    "📋 Solicitudes hoy",
+        today_completed:   "✅ Completadas hoy",
+
+        ops_title:         "📡 Distribución por operador",
+        ops_desc:          "Solicitudes por operador móvil",
+
+        lb_title:          "🏆 Clasificación del staff",
+        lb_desc:           (n) => `Top ${n} del staff por códigos validados`,
+        lb_none:           "*Aún no hay validaciones registradas.*",
+        lb_validations:    "validaciones",
+
+        act_title:         "📈 Actividad — últimas 24 h",
+        act_none:          "*Sin actividad en las últimas 24 horas.*",
+
+        staffact_title:    "👥 Actividad del staff",
+        staffact_none:     "*Aún no hay actividad registrada.*",
+
+        err_fetch:         "❌ Error al obtener los datos.",
+        err_network:       (m) => `❌ Error de red: ${m}`,
 
         config_default_channel:  (ch) => `✅ Canal por defecto establecido en ${ch}`,
         config_operator_channel: (op, ch) => `✅ Canal para **${op}** establecido en ${ch}`,

@@ -117,6 +117,20 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        // GuildMembers is needed to resolve WHO is in the access role, which
+        // is the only way to honour per-staff ping preferences: a role
+        // mention pings everyone in the role with no way to exclude someone,
+        // so opting out requires mentioning the members individually minus
+        // whoever turned pings off (see utils/pings.js).
+        //
+        // This is a PRIVILEGED intent — it must also be ticked in the Discord
+        // Developer Portal under Bot -> Privileged Gateway Intents -> Server
+        // Members Intent, or login fails outright with a "disallowed intents"
+        // error. If you'd rather not enable it, remove this one line: pings.js
+        // detects the empty member list and falls back to the plain role
+        // mention the bot used before, so everything keeps working — the only
+        // thing lost is the individual ping opt-out.
+        GatewayIntentBits.GuildMembers,
     ],
 });
 
@@ -195,7 +209,7 @@ client.on("warn",              (info)      => console.warn("⚠️  discord.js w
 // settings panel (staffConfig.js), not the request-processing buttons
 // (claim/banip/len4/len6/wrong/unclaim/truecode/falsecode) in buttons.js —
 // routed separately so the two handlers never need to know about each other.
-const CONFIG_BUTTON_ACTIONS = new Set(["cfgopen", "cfgping"]);
+const CONFIG_BUTTON_ACTIONS = new Set(["cfgopen", "cfgping", "cfgreset"]);
 
 client.on("interactionCreate", async interaction => {
     try {

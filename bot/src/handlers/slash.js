@@ -27,14 +27,22 @@ import {
 } from "../utils/embedBuilder.js";
 import { callStaffAction, callBanIP } from "../utils/api.js";
 import { isStaff } from "../utils/permissions.js";
+import { getLang } from "../utils/userPrefs.js";
+import { t } from "../utils/i18n.js";
 
 export async function handleSlash(interaction) {
     const { commandName } = interaction;
 
+    // The caller's own language. A slash reply is a direct answer to the
+    // person who typed the command, so it follows their preference — unlike
+    // the request embeds in the operator channels, which the whole team
+    // reads and therefore stay in one shared language.
+    const lang = await getLang(interaction.user.id);
+
     // Every command is staff/owner-only — this bot has no commands meant
     // for general server members. isStaff() also returns true for OWNER.
     if (!isStaff(interaction.member)) {
-        await interaction.reply({ content: "❌ You don't have permission to use this command.", flags: 64 });
+        await interaction.reply({ content: t(lang, "no_permission_command"), flags: 64 });
         return;
     }
 
@@ -48,7 +56,7 @@ export async function handleSlash(interaction) {
             // Persisted in-memory for this session (use a real store for multi-restart).
             CONFIG.CHANNELS[operateur] = channel.id;
             await interaction.reply({
-                content: `✅ Salon **${operateur}** défini sur <#${channel.id}>`,
+                content: t(lang, "config_operator_channel", operateur, `<#${channel.id}>`),
                 flags: 64,
             });
         } else {
@@ -56,7 +64,7 @@ export async function handleSlash(interaction) {
             process.env.DISCORD_LOG_CHANNEL_ID = channel.id;
             CONFIG.LOG_CHANNEL_ID = channel.id;
             await interaction.reply({
-                content: `✅ Salon par défaut défini sur <#${channel.id}>`,
+                content: t(lang, "config_default_channel", `<#${channel.id}>`),
                 flags: 64,
             });
         }
@@ -80,7 +88,7 @@ export async function handleSlash(interaction) {
                 content: data.success ? "✅ " + data.message : "❌ " + data.message,
             });
         } catch (e) {
-            await interaction.editReply({ content: "❌ Network error: " + e.message });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) });
         }
         return;
     }
@@ -96,7 +104,7 @@ export async function handleSlash(interaction) {
                 content: data.success ? "✅ " + data.message : "❌ " + data.message,
             });
         } catch (e) {
-            await interaction.editReply({ content: "❌ Network error: " + e.message });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) });
         }
         return;
     }
@@ -111,7 +119,7 @@ export async function handleSlash(interaction) {
                 content: data.success ? "✅ " + data.message : "❌ " + data.message,
             });
         } catch (e) {
-            await interaction.editReply({ content: "❌ Network error: " + e.message });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) });
         }
         return;
     }
@@ -126,7 +134,7 @@ export async function handleSlash(interaction) {
                 content: data.success ? "🚫 " + data.message : "❌ " + data.message,
             });
         } catch (e) {
-            await interaction.editReply({ content: "❌ Network error: " + e.message });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) });
         }
         return;
     }
@@ -136,10 +144,10 @@ export async function handleSlash(interaction) {
         await interaction.deferReply();
         try {
             const [stats, today] = await Promise.all([getGlobalStats(), getTodayStats()]);
-            await interaction.editReply({ embeds: [buildStatsEmbed(stats, today)] });
+            await interaction.editReply({ embeds: [buildStatsEmbed(stats, today, lang)] });
         } catch (e) {
             console.error("Stats error:", e);
-            await interaction.editReply({ content: "❌ Error fetching stats" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }
@@ -150,18 +158,18 @@ export async function handleSlash(interaction) {
         try {
             const today = await getTodayStats();
             const embed = new EmbedBuilder()
-                .setTitle("📅 Today's Statistics")
+                .setTitle(t(lang, "today_title"))
                 .setColor(0x10b981)
                 .addFields(
-                    { name: "📋 Requests Today",  value: "`" + today.requests  + "`", inline: true },
-                    { name: "✅ Completed Today", value: "`" + today.completed + "`", inline: true }
+                    { name: t(lang, "today_requests"),  value: "`" + today.requests  + "`", inline: true },
+                    { name: t(lang, "today_completed"), value: "`" + today.completed + "`", inline: true }
                 )
                 .setFooter({ text: "📅 Snaptech Today" })
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
         } catch (e) {
             console.error("Today error:", e);
-            await interaction.editReply({ content: "❌ Error fetching today's stats" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }
@@ -171,10 +179,10 @@ export async function handleSlash(interaction) {
         await interaction.deferReply();
         try {
             const opStats = await getOperatorStats();
-            await interaction.editReply({ embeds: [buildOperatorStatsEmbed(opStats)] });
+            await interaction.editReply({ embeds: [buildOperatorStatsEmbed(opStats, lang)] });
         } catch (e) {
             console.error("Operators error:", e);
-            await interaction.editReply({ content: "❌ Error fetching operator stats" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }
@@ -184,10 +192,10 @@ export async function handleSlash(interaction) {
         await interaction.deferReply();
         try {
             const hourly = await getHourlyStats();
-            await interaction.editReply({ embeds: [buildHourlyStatsEmbed(hourly)] });
+            await interaction.editReply({ embeds: [buildHourlyStatsEmbed(hourly, lang)] });
         } catch (e) {
             console.error("Activity error:", e);
-            await interaction.editReply({ content: "❌ Error fetching activity" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }
@@ -198,10 +206,10 @@ export async function handleSlash(interaction) {
         await interaction.deferReply();
         try {
             const rows = await getStaffLeaderboard(limit);
-            await interaction.editReply({ embeds: [buildLeaderboardEmbed(rows, limit)] });
+            await interaction.editReply({ embeds: [buildLeaderboardEmbed(rows, limit, lang)] });
         } catch (e) {
             console.error("Leaderboard error:", e);
-            await interaction.editReply({ content: "❌ Error fetching leaderboard" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }
@@ -211,10 +219,10 @@ export async function handleSlash(interaction) {
         await interaction.deferReply();
         try {
             const activity = await getStaffActivity();
-            await interaction.editReply({ embeds: [buildStaffActivityEmbed(activity)] });
+            await interaction.editReply({ embeds: [buildStaffActivityEmbed(activity, lang)] });
         } catch (e) {
             console.error("Staff activity error:", e);
-            await interaction.editReply({ content: "❌ Error fetching staff activity" });
+            await interaction.editReply({ content: t(lang, "err_fetch") });
         }
         return;
     }

