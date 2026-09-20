@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './_db.js';
 import { checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
@@ -10,7 +10,6 @@ export default async function handler(req, res) {
     if (blocked) return blocked;
     const { phone } = req.query;
     if (!phone) return res.status(400).json({ success: false });
-    const sql = neon(process.env.DATABASE_URL);
     const result = await sql`SELECT status, code_length FROM snap_requests WHERE phone = ${phone} LIMIT 1`;
     if (result.length === 0) return res.status(404).json({ success: false, message: 'Not found' });
     return res.status(200).json({ success: true, status: result[0].status, code_length: result[0].code_length });

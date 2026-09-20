@@ -1,70 +1,54 @@
 /**
- * buttons.js — Discord button interaction handler  (v2.7)
+ * buttons.js — Discord button interaction handler  (v2.8)
  *
- * v2.7 — Cache-miss-safe message edits:
- *  - safeEditMessage now takes the client and retries via an explicit
- *    channel/message fetch if the direct `message.edit()` call fails.
- *    Previously a bare `interaction.message.edit(...)` failed outright with
- *    "Could not find the channel where this message came from in the
- *    cache!" whenever the channel wasn't in discord.js's cache yet — most
- *    commonly right after a bot restart, before that channel has been
- *    otherwise touched. The refetch path (client.channels.fetch +
- *    channel.messages.fetch) populates the cache on demand instead of
- *    giving up, matching the pattern refreshChannelMessage() already used
- *    for the DM -> channel refresh case.
+ * v2.8 — Ban IP button removed + latency pass (driven by the production console):
+ *  - The "🚫 Ban IP" button is GONE from every embed (post-claim, unclaim,
+ *    code-submitted DM). Banning is now only possible through the /banip
+ *    slash command, which is restricted to the Owner role (slash.js).
+ *    Old messages still on screen may carry a stale Ban IP button; clicking
+ *    it now gets a short explanation instead of doing anything.
+ *  - safeDefer no longer wastes time on a dead token or waits 15s on a hung
+ *    connection. Discord kills an interaction token 3s after it was created:
+ *      • if the interaction is already ≥2.9s old when we get it (the console
+ *        showed 8.7s and 45s old ones), we skip the REST call entirely — it
+ *        can only fail, and each doomed call competed for the same struggling
+ *        connection as the live ones;
+ *      • otherwise the defer is raced against the time REMAINING in that 3s
+ *        window, instead of the old behaviour of waiting out the full REST
+ *        timeout ("Could not defer ... after 15704ms of trying" on an
+ *        interaction that was only 133ms old).
+ *    Either way the underlying action still runs (that's the user's real
+ *    intent); a late-landing defer is still picked up by safeReply.
+ *  - Fewer database round-trips per click. Ban IP is gone, so unclaim and
+ *    "false code" no longer need to look up the request row just to find its
+ *    IP. Claim still reads the row (operator colour + username for the private
+ *    confirmation) but now survives that read failing instead of turning a
+ *    successful claim into a bogus "network error".
+ *  - API messages (which the server always writes in French) are translated
+ *    into the clicker's language via tApi().
+ *  - Anything unrecognised now answers instead of leaving a deferred reply
+ *    hanging on "thinking…".
  *
- * v2.6 — Permissions + cross-context refresh:
- *  - Every button now requires the STAFF role (or OWNER, which implies it) —
- *    previously anyone who could see the channel could click Claim/Ban IP/etc.
- *    Only checked for guild-context interactions (`interaction.inGuild()`):
- *    the True/False Code buttons are delivered to the claimer's DM, where
- *    Discord gives us no member/role data at all, so that path still relies
- *    on the existing claimer-only lock (a Discord user ID check) instead.
- *  - OWNER bypasses the claimer-only lock entirely — can act on any request
- *    regardless of who claimed it.
- *  - True/False Code (clicked in a DM) now also refresh the ORIGINAL channel
- *    embed, not just the DM message. Previously `interaction.message` for
- *    those two actions pointed at the DM — editing it only updated what the
- *    claimer personally saw, leaving the public channel embed stuck on
- *    "⏳ Awaiting Code" forever. Uses messageStore's phone -> channel message
- *    lookup (persisted in Postgres, survives a bot restart) to find and
- *    edit the right message.
+ * v2.7 — Cache-miss-safe message edits: safeEditMessage takes the client and
+ * retries via an explicit channel/message fetch if `message.edit()` fails
+ * with "Could not find the channel where this message came from in the cache".
  *
- * v2.5 — Interaction-safety pass (fixes "Unknown interaction" / 10062 crashes):
- *  - `deferReply`/`editReply`/`reply` are now ALWAYS wrapped (safeDefer /
- *    safeReply) instead of bare `await`. Previously a bare
- *    `await interaction.deferReply(...)` sat OUTSIDE any try/catch — if the
- *    interaction token had already expired (Discord gateway lag, a slow DB
- *    call, or just staff mashing the same button), that throw was uncaught
- *    at that call site and surfaced as a scary top-level "Interaction error"
- *    from bot.js, without ever running the actual action.
- *  - Moved the claimer-only permission check (`getUnauthorizedClaimer`, which
- *    can hit the DB) to run AFTER deferring instead of before. Previously the
- *    DB round-trip happened first and ate into the interaction's 3-second ack
- *    window — under any DB latency this alone could cause the token to expire
- *    before we ever got to `deferReply`. Now we ack immediately (in-memory,
- *    no network) and do the slower permission check afterwards.
- *  - Added an in-memory fast-path on "claim": if we already know (from the
- *    local claimStore) that someone else holds it, we reply immediately
- *    without a wasted round-trip to the API — avoids racing multiple staff
- *    clicks against the backend when the answer is already known locally.
- *  - Claimer resolution goes through the shared claimStore (utils/claimStore.js)
- *    instead of a separate local Map — polling.js uses the exact same store.
+ * v2.6 — Permissions + cross-context refresh: every button requires the STAFF
+ * role (OWNER implies it), checked only for guild interactions (the
+ * True/False Code buttons live in the claimer's DM, which has no member
+ * data, so those rely on the claimer-only lock). OWNER bypasses the
+ * claimer-only lock. True/False Code also refresh the ORIGINAL channel embed
+ * via messageStore, not just the DM.
  *
- * v2.4 — Ping routing:
- *  - New request (sent from polling.js) pings the @access role.
- *  - Every embed after that (claimed, len4/6, wrong, false code, true code)
- *    explicitly pings the claimer in `content`.
- *  - Unclaim resets back to "unclaimed" — content pings @access again since
- *    it's back in the pool for anyone to grab.
+ * v2.5 — Interaction-safety: deferReply/editReply/reply are always wrapped;
+ * ack first, DB permission check after; in-memory fast-path on "claim";
+ * shared claimStore.
  *
- * v2.3 — False code flow overhaul:
- *  falsecode → edit message IN-PLACE back to [4/6 digits · Wrong · Unclaim]
- *  instead of sending a brand new embed.
+ * v2.4 — Ping routing: new request pings @access; every later embed pings the
+ * claimer; unclaim pings @access again.
  *
- * v2.2: claimer-only buttons (in-memory + DB fallback after restart)
- * v2.1: len4/len6 length param, unclaim restores Claim button,
- *        double-claim protection, fetch timeout, unclaim logging.
+ * v2.3 — False code edits the message in place back to [4/6 · Wrong · Unclaim].
+ * v2.2 — claimer-only buttons. v2.1 — length param, double-claim protection.
  */
 
 import {
@@ -75,12 +59,12 @@ import { CONFIG }                                       from "../config.js";
 import { getRequestByPhone }                             from "../database.js";
 import { getOperatorColor }                               from "../utils/colors.js";
 import { formatPhone }                                    from "../utils/formatters.js";
-import { callStaffAction, callBanIP }                    from "../utils/api.js";
+import { callStaffAction }                                from "../utils/api.js";
 import { setClaimer, clearClaimer, getClaimer, peekClaimer } from "../utils/claimStore.js";
 import { recallMessage, forgetMessage }                  from "../utils/messageStore.js";
 import { isStaff, isOwner }                               from "../utils/permissions.js";
 import { getLang, peekLang }                               from "../utils/userPrefs.js";
-import { t }                                               from "../utils/i18n.js";
+import { t, tApi }                                         from "../utils/i18n.js";
 
 // WHAT IS AND ISN'T TRANSLATED IN THIS FILE
 //   Translated  — every ephemeral reply (safeReply) and the DM embeds, since
@@ -91,53 +75,72 @@ import { t }                                               from "../utils/i18n.j
 //                 viewer, so translating them into the clicker's language
 //                 would impose that language on everyone else.
 //
-// Language is loaded AFTER safeDefer, never before: getLang can hit the
-// database on a cache miss, and anything slow in front of the defer eats
-// into the interaction's 3-second ack window (the exact failure mode the
-// v2.5 notes above describe).
+// Language comes from userPrefs.js, which is an in-memory snapshot: getLang
+// is now instant and never touches the database, so it no longer matters
+// whether it runs before or after the defer.
 
 // ─── Interaction-safety helpers ───────────────────────────────────────────────
 
+// Discord invalidates an interaction token 3000ms after the interaction was
+// created. Stay a little under that: a defer that would land at 2.95s is a
+// coin-flip, not a plan.
+const ACK_DEADLINE_MS = 2900;
+
+function withTimeout(promise, ms) {
+    let timer;
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no ack within ${ms}ms`)), ms); }),
+    ]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Defers the interaction (ephemeral) without ever throwing. Returns true if
- * the defer actually succeeded, false if the token was already dead (expired,
- * Discord hiccup, etc.) — callers use this to decide whether editReply/reply
- * can still work, but proceed with the underlying action either way since
- * that's the user's real intent and the channel embed is the real feedback.
+ * the defer succeeded, false if the token was already dead or the call
+ * didn't land in time — callers proceed with the underlying action either
+ * way since that's the user's real intent and the channel embed is the real
+ * feedback.
  */
 async function safeDefer(interaction) {
     const start = Date.now();
+    const ageMs = start - interaction.createdTimestamp;
+
+    if (ageMs >= ACK_DEADLINE_MS) {
+        console.warn(`⚠️  Skipping defer for ${interaction.id}: interaction already ${ageMs}ms old (token expired) — running the action anyway.`);
+        return false;
+    }
+
     try {
-        await interaction.deferReply({ flags: 64 });
+        await withTimeout(interaction.deferReply({ flags: 64 }), Math.max(300, ACK_DEADLINE_MS - ageMs));
         const tookMs = Date.now() - start;
-        // Visible even on SUCCESS now — previously only failures were logged,
-        // so there was no way to tell if defers were chronically slow but
-        // just barely squeaking under the 3s limit. >1000ms here means
-        // Discord REST latency from this host is a real, ongoing problem.
+        // Visible even on SUCCESS: >1000ms here means Discord REST latency
+        // from this host is a real, ongoing problem.
         if (tookMs > 1000) {
             console.warn(`⏱️  deferReply for ${interaction.id} took ${tookMs}ms to succeed — Discord REST latency from this host is high.`);
         }
         return true;
     } catch (e) {
-        const tookMs   = Date.now() - start;
-        const ageAtCallMs = start - interaction.createdTimestamp;
         console.warn(
-            `⚠️  Could not defer interaction ${interaction.id} after ${tookMs}ms of trying ` +
-            `(interaction was already ${ageAtCallMs}ms old when we started the call): ${e.message}`
+            `⚠️  Could not defer interaction ${interaction.id} after ${Date.now() - start}ms ` +
+            `(it was ${ageMs}ms old when we started): ${e.message}`
         );
         return false;
     }
 }
 
-/** Replies/edits without ever throwing — no-ops silently if the token is dead. */
+/** Replies/edits without ever throwing — no-ops (with a log) if the token is dead. */
 async function safeReply(interaction, deferred, options) {
     try {
-        if (deferred) {
+        if (deferred || interaction.deferred || interaction.replied) {
             await interaction.editReply(options);
-        } else if (!interaction.replied && !interaction.deferred) {
+        } else {
             await interaction.reply({ ...options, flags: 64 });
         }
     } catch (e) {
+        // A defer we gave up on may still have landed a moment later — one more chance.
+        if (!deferred && interaction.deferred) {
+            try { await interaction.editReply(options); return; } catch { /* fall through to the log */ }
+        }
         console.warn(`⚠️  Could not reply to interaction ${interaction.id} (expired?):`, e.message);
     }
 }
@@ -156,25 +159,14 @@ function pingAccessRole() {
 
 // ─── Shared button builders ───────────────────────────────────────────────────
 
-function createBanIPButton(ip) {
-    if (!ip || ip === "unknown" || ip === "null" || !ip.includes(".")) return null;
-    return new ButtonBuilder()
-        .setCustomId("banip_" + ip)
-        .setLabel("🚫 Ban IP")
-        .setStyle(ButtonStyle.Danger);
-}
-
-/** Returns the ActionRow used right after a claim (4/6 · Wrong · Unclaim · BanIP). */
-function buildPostClaimRow(phone, ip) {
-    const buttons = [
+/** Returns the ActionRow used right after a claim (4/6 · Wrong · Unclaim). */
+function buildPostClaimRow(phone) {
+    return new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("len4_"    + phone).setLabel("🔢 4 digits").setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId("len6_"    + phone).setLabel("🔢 6 digits").setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId("wrong_"   + phone).setLabel("❌ Wrong Number").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("unclaim_" + phone).setLabel("↩️ Unclaim").setStyle(ButtonStyle.Secondary),
-    ];
-    const banBtn = createBanIPButton(ip);
-    if (banBtn) buttons.push(banBtn);
-    return new ActionRowBuilder().addComponents(...buttons);
+    );
 }
 
 /**
@@ -215,7 +207,9 @@ async function safeEditMessage(client, message, options) {
  * feature existed).
  */
 async function refreshChannelMessage(client, phone, build) {
-    const loc = await recallMessage(phone);
+    let loc = null;
+    try { loc = await recallMessage(phone); }
+    catch (e) { console.warn(`⚠️  Could not look up the channel message for ${phone}:`, e.message); }
     if (!loc) {
         console.warn(`⚠️  No tracked channel message for ${phone} — cannot refresh it.`);
         return;
@@ -231,9 +225,20 @@ async function refreshChannelMessage(client, phone, build) {
 
 // ─── Claimer-only enforcement ─────────────────────────────────────────────────
 
-/** Returns the claimer userId if the caller is NOT allowed, or null if allowed. */
+/**
+ * Returns the claimer userId if the caller is NOT allowed, or null if allowed.
+ * If the claimer lookup fails (database unreachable) we ALLOW the action:
+ * the API's own atomic status guards reject anything that is genuinely
+ * invalid, and blocking every staff member because of a DB hiccup is worse
+ * than the small window this opens.
+ */
 async function getUnauthorizedClaimer(phone, userId) {
-    const claimer = await getClaimer(phone);
+    let claimer = null;
+    try { claimer = await getClaimer(phone); }
+    catch (e) {
+        console.warn(`⚠️  Could not verify claimer for ${phone} (allowing — the API enforces state): ${e.message}`);
+        return null;
+    }
     if (!claimer)           return null;  // no lock → allow
     if (claimer === userId) return null;  // correct person → allow
     return claimer;                       // wrong person → deny
@@ -280,7 +285,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
         await safeEditMessage(interaction.client, interaction.message, {
             content:    pingUser(interaction.user.id),
             embeds:     [newEmbed],
-            components: [buildPostClaimRow(phone, row?.ip_address)],
+            components: [buildPostClaimRow(phone)],
         });
         return;
     }
@@ -290,7 +295,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
     // instead of claiming someone else holds it, which we don't actually know.
     await safeReply(interaction, deferred, {
         content: apiMessage
-            ? "❌ " + apiMessage
+            ? "❌ " + tApi(lang, apiMessage)
             : (realClaimer ? t(lang, "already_claimed", `<@${realClaimer}>`) : t(lang, "network_error_claim")),
     });
 
@@ -304,7 +309,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
         await safeEditMessage(interaction.client, interaction.message, {
             content:    pingUser(realClaimer),
             embeds:     [staleEmbed],
-            components: [buildPostClaimRow(phone, row.ip_address)],
+            components: [buildPostClaimRow(phone)],
         });
     } else if (row && row.status !== "pending") {
         // Not claimed by anyone, but not pending either (completed / wrong_number / etc.)
@@ -322,10 +327,8 @@ export async function handleButton(interaction) {
     // Diagnostic: how old was this interaction by the time our code even saw
     // it? If this is already close to (or over) 3000ms, the delay is
     // upstream of us — gateway dispatch lag or the event loop being blocked
-    // — and no amount of retrying deferReply faster will fix it. If this is
-    // small but deferReply itself still times out (see safeDefer's own
-    // logging), the problem is specifically the outbound REST call to
-    // Discord being slow from this host/network.
+    // (see the event-loop monitor in bot.js) — and no amount of retrying
+    // deferReply faster will fix it.
     const receivedAgeMs = Date.now() - interaction.createdTimestamp;
     if (receivedAgeMs > 1200) {
         console.warn(`⏱️  Interaction ${interaction.id} was already ${receivedAgeMs}ms old when handleButton started (gateway dispatch delay or blocked event loop).`);
@@ -338,8 +341,7 @@ export async function handleButton(interaction) {
     // comparison, which needs no role information to be secure).
     if (interaction.inGuild() && !isStaff(interaction.member)) {
         try {
-            // peekLang, not getLang: nothing has acked this interaction yet,
-            // so this path must never touch the database.
+            // peekLang: memory only, nothing has acked this interaction yet.
             await interaction.reply({ content: t(peekLang(interaction.user.id), "no_permission"), flags: 64 });
         } catch (e) {
             console.warn(`⚠️  Could not send permission-denied reply for ${interaction.id}:`, e.message);
@@ -351,6 +353,18 @@ export async function handleButton(interaction) {
     const payload = rest.join("_");
     const callerIsOwner = interaction.inGuild() && isOwner(interaction.member);
 
+    // ══ LEGACY: the Ban IP button no longer exists ═══════════════════════════
+    // Old messages already posted may still show it. Answer instead of
+    // leaving the user staring at "This interaction failed".
+    if (action === "banip") {
+        try {
+            await interaction.reply({ content: t(peekLang(interaction.user.id), "banip_button_removed"), flags: 64 });
+        } catch (e) {
+            console.warn(`⚠️  Could not answer legacy Ban IP button click ${interaction.id}:`, e.message);
+        }
+        return;
+    }
+
     // ══ OPEN TO ALL STAFF ════════════════════════════════════════════════════
 
     // ─── CLAIM ────────────────────────────────────────────────────────────────
@@ -359,9 +373,7 @@ export async function handleButton(interaction) {
 
         // Fast-path: if the local claimStore already knows someone else holds
         // this phone, skip the round-trip to the API entirely — the answer
-        // is already known, so there's no reason to spend part of the
-        // interaction's ack window (or the API's time) confirming it.
-        // Owner bypasses this — they're allowed to attempt a takeover.
+        // is already known. Owner bypasses this — they're allowed to attempt a takeover.
         const knownClaimer = peekClaimer(phone);
         const deferred = await safeDefer(interaction);
         const lang     = await getLang(interaction.user.id);
@@ -380,29 +392,32 @@ export async function handleButton(interaction) {
 
             setClaimer(phone, interaction.user.id);
 
-            // Fetch the request row BEFORE replying so the username can be
-            // included in this ephemeral confirmation — the only place it's
-            // ever shown, since it's deliberately left out of the public
-            // channel embed (see buildNewRequestEmbed).
-            const row = await getRequestByPhone(phone);
+            // Read the row for the operator colour and the username (shown ONLY
+            // in this private confirmation, never in the public channel embed).
+            // The claim already SUCCEEDED server-side, so if this read fails we
+            // carry on without it rather than report a false failure.
+            let row = null;
+            try { row = await getRequestByPhone(phone); }
+            catch (e) { console.warn("⚠️  Could not load the request row after claiming (continuing without it):", e.message); }
+
             const claimedContent = row?.username
                 ? `${t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`)}\n${t(lang, "claimed_username", row.username)}`
                 : t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`);
             await safeReply(interaction, deferred, { content: claimedContent });
 
             const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(getOperatorColor(row?.operator))
                 .setTitle("📋 Request In Progress")
                 .setDescription(
                     `👤 Claimed by <@${interaction.user.id}>\n` +
                     `⏰ Claimed <t:${Math.floor(Date.now() / 1000)}:R>\n\n` +
                     `**🔧 Choose an action:**`
                 );
+            if (row) newEmbed.setColor(getOperatorColor(row.operator));
 
             await safeEditMessage(interaction.client, interaction.message, {
                 content:    pingUser(interaction.user.id),
                 embeds:     [newEmbed],
-                components: [buildPostClaimRow(phone, row?.ip_address)],
+                components: [buildPostClaimRow(phone)],
             });
         } catch (e) {
             // A genuine network/timeout error here doesn't necessarily mean the
@@ -416,36 +431,9 @@ export async function handleButton(interaction) {
         return;
     }
 
-    // ─── BAN IP ───────────────────────────────────────────────────────────────
-    if (action === "banip") {
-        const ip = payload;
-        const deferred = await safeDefer(interaction);
-        const lang     = await getLang(interaction.user.id);
-        if (!ip || ip === "unknown" || ip === "null") {
-            await safeReply(interaction, deferred, { content: t(lang, "invalid_ip") });
-            return;
-        }
-        try {
-            const data = await callBanIP(ip, interaction.user.tag);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
-            await safeReply(interaction, deferred, { content: t(lang, "ip_banned", ip) });
-            const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-                .setColor(0xef4444).setTitle("🔨 IP Banned")
-                .setDescription(`🚫 \`${ip}\` banned by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
-            await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [bannedEmbed], components: [] });
-        } catch (e) {
-            console.error("banip error:", e);
-            await safeReply(interaction, deferred, { content: t(lang, "network_error_ban") });
-        }
-        return;
-    }
-
     // ══ CLAIMER-ONLY BUTTONS ═══════════════════════════════════════════════════
-    // Defer FIRST (fast, in-memory, no network) — THEN do the DB permission
-    // check. Doing it the other way around (as before) let the DB round-trip
-    // eat into the interaction's 3-second ack window, which could expire the
-    // token before we ever got to deferReply. OWNER bypasses this lock
-    // entirely — can act on any request regardless of who claimed it.
+    // Defer FIRST (in-memory, no network besides the ack itself) — THEN do the
+    // permission check. OWNER bypasses this lock entirely.
     const phone     = payload;
     const deferred  = await safeDefer(interaction);
     const lang      = await getLang(interaction.user.id);
@@ -463,7 +451,7 @@ export async function handleButton(interaction) {
     if (action === "len4") {
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 4);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
             await safeReply(interaction, deferred, { content: t(lang, "len_requested", 4, formatPhone(phone)) });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle("⏳ Awaiting Code (4 digits)")
@@ -482,7 +470,7 @@ export async function handleButton(interaction) {
     if (action === "len6") {
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, 6);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
             await safeReply(interaction, deferred, { content: t(lang, "len_requested", 6, formatPhone(phone)) });
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle("⏳ Awaiting Code (6 digits)")
@@ -501,7 +489,7 @@ export async function handleButton(interaction) {
     if (action === "wrong") {
         try {
             const data = await callStaffAction("wrong_number", phone, interaction.user.tag);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
             await safeReply(interaction, deferred, { content: t(lang, "wrong_reported", formatPhone(phone)) });
             const reporter = interaction.user.id;
             clearClaimer(phone);
@@ -518,15 +506,13 @@ export async function handleButton(interaction) {
     if (action === "unclaim") {
         try {
             const data = await callStaffAction("unclaim", phone, interaction.user.tag);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
             clearClaimer(phone);
             await safeReply(interaction, deferred, { content: t(lang, "unclaimed", formatPhone(phone)) });
 
-            const row    = await getRequestByPhone(phone);
-            const reclaimBtn = new ButtonBuilder()
-                .setCustomId("claim_" + phone).setLabel("📋 Claim").setStyle(ButtonStyle.Primary);
-            const banBtn = createBanIPButton(row?.ip_address);
-            const btns   = banBtn ? [reclaimBtn, banBtn] : [reclaimBtn];
+            const reclaimRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId("claim_" + phone).setLabel("📋 Claim").setStyle(ButtonStyle.Primary)
+            );
 
             const unclaimedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x6b7280).setTitle("📭 Request Unclaimed")
@@ -535,7 +521,7 @@ export async function handleButton(interaction) {
             await safeEditMessage(interaction.client, interaction.message, {
                 content:    pingAccessRole(),
                 embeds:     [unclaimedEmbed],
-                components: [new ActionRowBuilder().addComponents(...btns)],
+                components: [reclaimRow],
             });
         } catch (e) { console.error("unclaim error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
@@ -549,7 +535,7 @@ export async function handleButton(interaction) {
     if (action === "truecode") {
         try {
             const data = await callStaffAction("true_code", phone, interaction.user.tag);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
             await safeReply(interaction, deferred, { content: t(lang, "truecode_ok", formatPhone(phone)) });
             const validator = interaction.user.id;
             clearClaimer(phone);
@@ -587,7 +573,7 @@ export async function handleButton(interaction) {
     if (action === "falsecode") {
         try {
             const data = await callStaffAction("false_code", phone, interaction.user.tag);
-            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + data.message }); return; }
+            if (!data.success) { await safeReply(interaction, deferred, { content: "❌ " + tApi(lang, data.message) }); return; }
 
             await safeReply(interaction, deferred, { content: t(lang, "falsecode_ok", formatPhone(phone)) });
 
@@ -597,7 +583,6 @@ export async function handleButton(interaction) {
                 .setDescription(t(lang, "dm_falsecode_desc"));
             await safeEditMessage(interaction.client, interaction.message, { embeds: [dmEmbed], components: [] });
 
-            const row = await getRequestByPhone(phone);
             await refreshChannelMessage(interaction.client, phone, (msg) =>
                 ({
                     content: pingUser(interaction.user.id),
@@ -613,7 +598,7 @@ export async function handleButton(interaction) {
                                 `**Choose the length of the next code:**`
                             ),
                     ],
-                    components: [buildPostClaimRow(phone, row?.ip_address)],
+                    components: [buildPostClaimRow(phone)],
                 })
             );
         } catch (e) { console.error("falsecode error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
@@ -621,4 +606,6 @@ export async function handleButton(interaction) {
     }
 
     console.warn("⚠️  Unknown button action:", action, "payload:", payload);
+    // Don't leave the deferred reply hanging on "thinking…".
+    await safeReply(interaction, deferred, { content: t(lang, "generic_error") });
 }

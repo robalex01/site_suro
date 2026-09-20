@@ -1,5 +1,9 @@
-import { neon } from "@neondatabase/serverless";
+import { sql, query } from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
+
+// snap_logs.details is JSON keyed by Discord tag. JSON_UNQUOTE(JSON_EXTRACT(..))
+// works on both MySQL and MariaDB (the ->> operator is MySQL-only).
+const STAFF_TAG = "JSON_UNQUOTE(JSON_EXTRACT(details, '$.staff_tag'))";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -10,54 +14,49 @@ export default async function handler(req, res) {
     const blocked = await checkBannedIP(req, res);
     if (blocked) return blocked;
 
-    const sql = neon(process.env.DATABASE_URL);
     const { type } = req.query;
 
     // ─── GLOBAL STATS ───
     if (type === "global" || !type) {
-      const total = await sql`SELECT COUNT(*) as count FROM snap_requests`;
-      const pending = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"pending"}`;
-      const processing = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"processing"}`;
-      const waiting = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"waiting_code"}`;
-      const submitted = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"code_submitted"}`;
-      const completed = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"completed"}`;
-      const wrong = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"wrong_number"}`;
-      const retry = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"retry_code"}`;
-      const banned = await sql`SELECT COUNT(*) as count FROM banned_ips`;
+      const [totals] = await sql`
+        SELECT
+          COUNT(*)                                              AS total,
+          COUNT(CASE WHEN status = 'pending'        THEN 1 END) AS pending,
+          COUNT(CASE WHEN status = 'processing'     THEN 1 END) AS processing,
+          COUNT(CASE WHEN status = 'waiting_code'   THEN 1 END) AS waiting,
+          COUNT(CASE WHEN status = 'code_submitted' THEN 1 END) AS submitted,
+          COUNT(CASE WHEN status = 'completed'      THEN 1 END) AS completed,
+          COUNT(CASE WHEN status = 'wrong_number'   THEN 1 END) AS wrong,
+          COUNT(CASE WHEN status = 'retry_code'     THEN 1 END) AS retry
+        FROM snap_requests
+      `;
+      const [banned] = await sql`SELECT COUNT(*) AS \`count\` FROM banned_ips`;
 
       return res.status(200).json({
         success: true,
-        data: {
-          total: total[0].count,
-          pending: pending[0].count,
-          processing: processing[0].count,
-          waiting: waiting[0].count,
-          submitted: submitted[0].count,
-          completed: completed[0].count,
-          wrong: wrong[0].count,
-          retry: retry[0].count,
-          banned: banned[0].count
-        }
+        data: { ...totals, banned: banned.count }
       });
     }
 
     // ─── TODAY STATS ───
     if (type === "today") {
-      const requests = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE created_at >= CURRENT_DATE`;
-      const completed = await sql`SELECT COUNT(*) as count FROM snap_requests WHERE status = ${"completed"} AND created_at >= CURRENT_DATE`;
-      return res.status(200).json({
-        success: true,
-        data: { requests: requests[0].count, completed: completed[0].count }
-      });
+      const [row] = await sql`
+        SELECT
+          COUNT(*)                                         AS requests,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed
+        FROM snap_requests
+        WHERE created_at >= CURDATE()
+      `;
+      return res.status(200).json({ success: true, data: row });
     }
 
     // ─── OPERATOR STATS ───
     if (type === "operators") {
       const rows = await sql`
-        SELECT operator, COUNT(*) as count 
-        FROM snap_requests 
-        GROUP BY operator 
-        ORDER BY count DESC
+        SELECT operator, COUNT(*) AS \`count\`
+        FROM snap_requests
+        GROUP BY operator
+        ORDER BY \`count\` DESC
       `;
       return res.status(200).json({ success: true, data: rows });
     }
@@ -65,28 +64,27 @@ export default async function handler(req, res) {
     // ─── HOURLY STATS ───
     if (type === "hourly") {
       const rows = await sql`
-        SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) as count
+        SELECT EXTRACT(HOUR FROM created_at) AS \`hour\`, COUNT(*) AS \`count\`
         FROM snap_requests
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
-        GROUP BY hour
-        ORDER BY hour
+        WHERE created_at >= NOW() - INTERVAL 24 HOUR
+        GROUP BY EXTRACT(HOUR FROM created_at)
+        ORDER BY \`hour\`
       `;
       return res.status(200).json({ success: true, data: rows });
     }
 
     // ─── STAFF LEADERBOARD ───
     if (type === "leaderboard") {
-      const limit = parseInt(req.query.limit) || 10;
-      const rows = await sql`
-        SELECT 
-          details->>'staff_tag' as staff,
-          COUNT(*) as validations
-        FROM snap_logs 
-        WHERE action = ${"true_code"} AND details->>'staff_tag' IS NOT NULL
-        GROUP BY details->>'staff_tag'
-        ORDER BY validations DESC
-        LIMIT ${limit}
-      `;
+      const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+      const rows = await query(
+        `SELECT ${STAFF_TAG} AS staff, COUNT(*) AS validations
+         FROM snap_logs
+         WHERE action = 'true_code' AND ${STAFF_TAG} IS NOT NULL
+         GROUP BY ${STAFF_TAG}
+         ORDER BY validations DESC
+         LIMIT ?`,
+        [limit]
+      );
       return res.status(200).json({ success: true, data: rows });
     }
 

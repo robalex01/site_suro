@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './_db.js';
 import { getClientIP } from './middleware.js';
 
 export default async function handler(req, res) {
@@ -10,7 +10,6 @@ export default async function handler(req, res) {
     if (!ip || ip === 'unknown' || ip === 'null' || ip === 'undefined') {
       return res.status(200).json({ success: true, banned: false });
     }
-    const sql = neon(process.env.DATABASE_URL);
     const banned = await sql`SELECT 1 FROM banned_ips WHERE ip_address = ${ip} LIMIT 1`;
     if (banned.length > 0) return res.status(200).json({ success: true, banned: true, ip });
     return res.status(200).json({ success: true, banned: false });

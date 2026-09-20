@@ -266,8 +266,15 @@ export function buildStaffActivityEmbed(activityData, lang = "en") {
         };
 
         Object.entries(grouped).forEach(([staff, actions]) => {
+            // Known actions get their translated label (emoji included);
+            // anything unrecognised falls back to the raw action name.
             const lines = Object.entries(actions)
-                .map(([action, count]) => `${actionEmoji[action] || "•"} ${action}: \`${count}\``)
+                .map(([action, count]) => {
+                    const label = actionEmoji[action]
+                        ? t(lang, `hist_action_${action}`)
+                        : `• ${action}`;
+                    return `${label}: \`${count}\``;
+                })
                 .join("\n");
             embed.addFields({ name: "👤 " + staff, value: lines, inline: true });
         });

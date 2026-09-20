@@ -43,7 +43,7 @@ import {
 } from "../database.js";
 import { isStaff } from "../utils/permissions.js";
 import { t } from "../utils/i18n.js";
-import { getPrefs, primePrefs, peekLang } from "../utils/userPrefs.js";
+import { getPrefs, primePrefs, forgetPrefs, peekLang } from "../utils/userPrefs.js";
 import { invalidatePingCache } from "../utils/pings.js";
 import { formatPhone } from "../utils/formatters.js";
 
@@ -69,6 +69,7 @@ const LANGUAGES = [
     { value: "fr", label: "Français",  emoji: "🇫🇷" },
     { value: "pl", label: "Polski",    emoji: "🇵🇱" },
     { value: "es", label: "Español",   emoji: "🇪🇸" },
+    { value: "ar", label: "العربية",  emoji: "🇸🇦" },
 ];
 
 // Hours to add for each snooze quick-option. "clear" is handled separately.
@@ -109,13 +110,14 @@ function statusLabel(lang, status) {
 
 function buildPublicPanelEmbed() {
     return new EmbedBuilder()
-        .setTitle("⚙️ Access Settings  ·  Réglages  ·  Ustawienia  ·  Ajustes")
+        .setTitle("⚙️ Access Settings  ·  Réglages  ·  Ustawienia  ·  Ajustes  ·  الإعدادات")
         .setColor(0x3b82f6)
         .setDescription(
             "🇬🇧 Set **your own** language, DM alerts and stats. Personal only — nothing global changes.\n" +
             "🇫🇷 Choisis **ta** langue, tes alertes MP et tes stats. Réglages personnels — rien de global ne change.\n" +
             "🇵🇱 Ustaw **swój** język, alerty DM i statystyki. Tylko osobiste — nic globalnego się nie zmienia.\n" +
-            "🇪🇸 Elige **tu** idioma, tus alertas MP y tus estadísticas. Solo personal — nada global cambia."
+            "🇪🇸 Elige **tu** idioma, tus alertas MP y tus estadísticas. Solo personal — nada global cambia.\n" +
+            "🇸🇦 اختر **لغتك** وتنبيهاتك الخاصة وإحصائياتك. إعدادات شخصية فقط — لا شيء عام يتغيّر."
         )
         .addFields({
             name: "🌐 Available / Disponibles",
@@ -372,7 +374,10 @@ async function handleSnoozeSelect(interaction) {
 async function handleReset(interaction) {
     if (!await safeAck(interaction, "update")) return;
     const prefs = await resetStaffPrefs(interaction.user.id);
-    primePrefs(interaction.user.id, prefs);
+    // The row is gone from Postgres — drop it from the in-memory copy too
+    // (priming it with the defaults would make the DM alert treat this user
+    // as still opted in, since defaults have receive_pings = true).
+    forgetPrefs(interaction.user.id);
     invalidatePingCache();
     await safeEdit(interaction, panelPayload(prefs));
 }

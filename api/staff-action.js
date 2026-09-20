@@ -1,16 +1,29 @@
 /**
- * api/staff-action.js — Staff action endpoint  (v2.2)
+ * api/staff-action.js — Staff action endpoint  (v2.2, MySQL)
  *
- * v2.2: claim now persists discord_user_id in claimed_by_discord_id column
- *       so the bot can enforce claimer-only buttons even after a restart.
- *       unclaim clears claimed_by_discord_id.
- *
- * v2.1: claim uses WHERE status='pending' RETURNING id (atomic, prevents double-claim).
- *       unclaim is now logged in snap_logs.
+ * v2.2: claim persists discord_user_id in claimed_by_discord_id so the bot can
+ *       enforce claimer-only buttons even after a restart. unclaim clears it.
+ * v2.1: every transition is a guarded UPDATE (WHERE status = expected) and we
+ *       check how many rows it matched — atomic, prevents double-claim races.
+ *       (MySQL has no RETURNING, so `affectedRows` replaces `result.length`;
+ *       every one of these UPDATEs changes `status`, so changed rows == matched.)
  */
 
-import { neon }         from "@neondatabase/serverless";
+import { sql }           from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
+
+const STALE_MESSAGE = "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).";
+
+function stale(res) {
+    return res.status(409).json({ success: false, message: STALE_MESSAGE });
+}
+
+/** Best-effort audit log — never fails the request. */
+async function log(action, details) {
+    try {
+        await sql`INSERT INTO snap_logs (action, details) VALUES (${action}, ${JSON.stringify(details)})`;
+    } catch {}
+}
 
 export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -27,8 +40,6 @@ export default async function handler(req, res) {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         }
 
-        const sql = neon(process.env.DATABASE_URL);
-
         // ─── CLAIM ────────────────────────────────────────────────────────────
         if (action === "claim") {
             // Atomic: only succeeds if still pending → prevents race condition
@@ -38,23 +49,14 @@ export default async function handler(req, res) {
                        claimed_by_discord_id = ${discord_user_id ?? null}
                 WHERE  phone  = ${phone}
                 AND    status = 'pending'
-                RETURNING id
             `;
-
-            if (result.length === 0) {
+            if (result.affectedRows === 0) {
                 return res.status(409).json({
                     success: false,
                     message: "Cette demande est déjà claim ou introuvable.",
                 });
             }
-
-            try {
-                await sql`
-                    INSERT INTO snap_logs (action, details)
-                    VALUES ('claim', ${JSON.stringify({ phone, staff_tag, discord_user_id })})
-                `;
-            } catch {}
-
+            await log("claim", { phone, staff_tag, discord_user_id });
             return res.status(200).json({ success: true, message: "Demande claim" });
         }
 
@@ -74,14 +76,8 @@ export default async function handler(req, res) {
                 UPDATE snap_requests
                 SET status = 'waiting_code', code_length = ${len}
                 WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
-                RETURNING id
             `;
-            if (result.length === 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
-                });
-            }
+            if (result.affectedRows === 0) return stale(res);
             return res.status(200).json({ success: true, message: `Longueur définie : ${len} chiffres` });
         }
 
@@ -91,20 +87,9 @@ export default async function handler(req, res) {
                 UPDATE snap_requests
                 SET status = 'wrong_number', claimed_by_discord_id = NULL
                 WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
-                RETURNING id
             `;
-            if (result.length === 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
-                });
-            }
-            try {
-                await sql`
-                    INSERT INTO snap_logs (action, details)
-                    VALUES ('wrong_number', ${JSON.stringify({ phone, staff_tag })})
-                `;
-            } catch {}
+            if (result.affectedRows === 0) return stale(res);
+            await log("wrong_number", { phone, staff_tag });
             return res.status(200).json({ success: true, message: "Mauvais numéro signalé" });
         }
 
@@ -114,20 +99,9 @@ export default async function handler(req, res) {
                 UPDATE snap_requests
                 SET status = 'completed', claimed_by_discord_id = NULL
                 WHERE phone = ${phone} AND status = 'code_submitted'
-                RETURNING id
             `;
-            if (result.length === 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
-                });
-            }
-            try {
-                await sql`
-                    INSERT INTO snap_logs (action, details)
-                    VALUES ('true_code', ${JSON.stringify({ phone, staff_tag })})
-                `;
-            } catch {}
+            if (result.affectedRows === 0) return stale(res);
+            await log("true_code", { phone, staff_tag });
             return res.status(200).json({ success: true, message: "Code validé" });
         }
 
@@ -138,20 +112,9 @@ export default async function handler(req, res) {
                 UPDATE snap_requests
                 SET status = 'retry_code'
                 WHERE phone = ${phone} AND status = 'code_submitted'
-                RETURNING id
             `;
-            if (result.length === 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
-                });
-            }
-            try {
-                await sql`
-                    INSERT INTO snap_logs (action, details)
-                    VALUES ('false_code', ${JSON.stringify({ phone, staff_tag })})
-                `;
-            } catch {}
+            if (result.affectedRows === 0) return stale(res);
+            await log("false_code", { phone, staff_tag });
             return res.status(200).json({ success: true, message: "Code refusé, l'utilisateur doit ressaisir" });
         }
 
@@ -161,20 +124,9 @@ export default async function handler(req, res) {
                 UPDATE snap_requests
                 SET status = 'pending', claimed_by_discord_id = NULL
                 WHERE phone = ${phone} AND status IN ('processing', 'retry_code')
-                RETURNING id
             `;
-            if (result.length === 0) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).",
-                });
-            }
-            try {
-                await sql`
-                    INSERT INTO snap_logs (action, details)
-                    VALUES ('unclaim', ${JSON.stringify({ phone, staff_tag })})
-                `;
-            } catch {}
+            if (result.affectedRows === 0) return stale(res);
+            await log("unclaim", { phone, staff_tag });
             return res.status(200).json({ success: true, message: "Demande unclaimée et remise dans la file" });
         }
 

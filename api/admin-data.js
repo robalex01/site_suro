@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './_db.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,17 +11,15 @@ export default async function handler(req, res) {
       return res.status(401).json({ success: false, message: 'Code incorrect' });
     }
 
-    const sql = neon(process.env.DATABASE_URL);
-
     // Stats globales
     const statsResult = await sql`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status = 'pending') as pending,
-        COUNT(*) FILTER (WHERE status = 'processing') as processing,
-        COUNT(*) FILTER (WHERE status = 'waiting_code') as waiting_code,
-        COUNT(*) FILTER (WHERE status = 'completed') as completed,
-        COUNT(*) FILTER (WHERE status = 'wrong_number') as wrong_number
+      SELECT
+        COUNT(*) AS total,
+        COUNT(CASE WHEN status = 'pending'      THEN 1 END) AS pending,
+        COUNT(CASE WHEN status = 'processing'   THEN 1 END) AS processing,
+        COUNT(CASE WHEN status = 'waiting_code' THEN 1 END) AS waiting_code,
+        COUNT(CASE WHEN status = 'completed'    THEN 1 END) AS completed,
+        COUNT(CASE WHEN status = 'wrong_number' THEN 1 END) AS wrong_number
       FROM snap_requests
     `;
 

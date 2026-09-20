@@ -20,7 +20,16 @@ export const CONFIG = {
     CLIENT_ID:      process.env.DISCORD_CLIENT_ID,
     GUILD_ID:       process.env.DISCORD_GUILD_ID       || null,
     LOG_CHANNEL_ID: process.env.DISCORD_LOG_CHANNEL_ID || null,
+    // MySQL / MariaDB — either a mysql://user:password@host:3306/dbname URL,
+    // or the separate DB_* variables below (DB_HOST wins if both are set).
     DATABASE_URL:   process.env.DATABASE_URL,
+    DB: {
+        HOST:     process.env.DB_HOST     || null,
+        PORT:     parseInt(process.env.DB_PORT, 10) || 3306,
+        USER:     process.env.DB_USER     || null,
+        PASSWORD: process.env.DB_PASSWORD || "",
+        NAME:     process.env.DB_NAME     || null,
+    },
     STAFF_SECRET:   process.env.STAFF_SECRET,
     API_BASE:       (process.env.API_BASE || "https://snaptech.vercel.app").replace(/\/$/, ""),
 
@@ -103,8 +112,10 @@ export function getChannelIdForOperator(operator) {
 
 export function validateConfig() {
     // Hard required — bot cannot start without these
-    const required = ["TOKEN", "CLIENT_ID", "DATABASE_URL", "STAFF_SECRET"];
+    const required = ["TOKEN", "CLIENT_ID", "STAFF_SECRET"];
     const missing = required.filter(k => !CONFIG[k]);
+    const hasDbParts = CONFIG.DB.HOST && CONFIG.DB.USER && CONFIG.DB.NAME;
+    if (!CONFIG.DATABASE_URL && !hasDbParts) missing.push("DATABASE_URL (or DB_HOST + DB_USER + DB_NAME)");
     if (missing.length > 0) {
         console.error("❌ Missing required env variables:", missing.join(", "));
         process.exit(1);
@@ -120,6 +131,7 @@ export function validateConfig() {
 
     console.log("✅ Config loaded");
     console.log("   API_BASE       :", CONFIG.API_BASE);
+    console.log("   Database       :", CONFIG.DB.HOST ? `${CONFIG.DB.HOST}:${CONFIG.DB.PORT}/${CONFIG.DB.NAME}` : "DATABASE_URL (mysql)");
     console.log("   Default channel:", CONFIG.LOG_CHANNEL_ID     || "(not set)");
     console.log("   Orange channel :", CONFIG.CHANNELS.orange    || "(uses default)");
     console.log("   SFR channel    :", CONFIG.CHANNELS.sfr       || "(uses default)");

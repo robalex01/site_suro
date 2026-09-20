@@ -19,7 +19,7 @@ export const slashCommands = [
         .addIntegerOption(opt => opt.setName("length").setDescription("4 or 6").setRequired(true)),
     new SlashCommandBuilder().setName("wrongnumber").setDescription("❌ Mark as wrong number")
         .addStringOption(opt => opt.setName("phone").setDescription("Phone number").setRequired(true)),
-    new SlashCommandBuilder().setName("banip").setDescription("🚫 Ban an IP address")
+    new SlashCommandBuilder().setName("banip").setDescription("🚫 Ban an IP address (Owner only)")
         .addStringOption(opt => opt.setName("ip").setDescription("IP address").setRequired(true)),
     new SlashCommandBuilder().setName("stats").setDescription("📊 Show global statistics"),
     new SlashCommandBuilder().setName("today").setDescription("📅 Show today's statistics"),

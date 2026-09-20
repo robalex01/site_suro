@@ -1,10 +1,20 @@
 /**
  * slash.js — Slash command handler
  *
- * Improvements:
- *  - Uses centralized callStaffAction / callBanIP from utils/api.js
- *  - All commands use try/catch with descriptive error messages
- *  - Dynamic import of EmbedBuilder removed (was only needed for /today)
+ * v2:
+ *  - /banip is now OWNER-ONLY. It is also the only way to ban an IP: the
+ *    "Ban IP" button was removed from every embed (buttons.js / polling.js).
+ *  - /claim now passes the caller's Discord ID to the API and records the
+ *    claim locally. Before, it sent no ID, so the request ended up claimed
+ *    by nobody: the "code submitted" DM couldn't find its claimer and fell
+ *    back to posting the code in the public channel, and the claimer-only
+ *    button lock had nothing to enforce.
+ *  - Replies come back from the API in French no matter what; they're now
+ *    translated into the caller's language (tApi).
+ *  - deferReply is wrapped: an expired token no longer surfaces as a scary
+ *    "Interaction error" stack trace. Language is read AFTER the defer via
+ *    getLang — the preference cache is in memory, so this is instant, and
+ *    the reply is now correct even the first time after a restart.
  */
 
 import { EmbedBuilder } from "discord.js";
@@ -26,24 +36,34 @@ import {
     buildPanelEmbed,
 } from "../utils/embedBuilder.js";
 import { callStaffAction, callBanIP } from "../utils/api.js";
-import { isStaff } from "../utils/permissions.js";
+import { setClaimer } from "../utils/claimStore.js";
+import { isStaff, isOwner } from "../utils/permissions.js";
 import { getLang, peekLang } from "../utils/userPrefs.js";
-import { t } from "../utils/i18n.js";
+import { t, tApi } from "../utils/i18n.js";
+
+/** Public deferReply that never throws. Returns false if the token was already dead. */
+async function deferPublic(interaction) {
+    try {
+        await interaction.deferReply();
+        return true;
+    } catch (e) {
+        const ageMs = Date.now() - interaction.createdTimestamp;
+        console.warn(`⚠️  Could not defer /${interaction.commandName} (${ageMs}ms old): ${e.message}`);
+        return false;
+    }
+}
 
 export async function handleSlash(interaction) {
     const { commandName } = interaction;
 
-    // peekLang, not getLang: this runs BEFORE the command has acknowledged
-    // the interaction, and Discord expires the token after 3 seconds. A
-    // database round-trip here would risk losing the whole command just to
-    // decide what language to word it in. Reads the cache only — instant,
-    // never touches the network, English on a miss.
-    const lang = peekLang(interaction.user.id);
+    // peekLang: this runs BEFORE the command has acknowledged the interaction
+    // and Discord expires the token after 3 seconds — memory only.
+    let lang = peekLang(interaction.user.id);
 
     // Every command is staff/owner-only — this bot has no commands meant
     // for general server members. isStaff() also returns true for OWNER.
     if (!isStaff(interaction.member)) {
-        await interaction.reply({ content: t(lang, "no_permission_command"), flags: 64 });
+        await interaction.reply({ content: t(lang, "no_permission_command"), flags: 64 }).catch(() => {});
         return;
     }
 
@@ -59,7 +79,7 @@ export async function handleSlash(interaction) {
             await interaction.reply({
                 content: t(lang, "config_operator_channel", operateur, `<#${channel.id}>`),
                 flags: 64,
-            });
+            }).catch(() => {});
         } else {
             // Default / fallback channel (used for any operator without a dedicated channel)
             process.env.DISCORD_LOG_CHANNEL_ID = channel.id;
@@ -67,7 +87,7 @@ export async function handleSlash(interaction) {
             await interaction.reply({
                 content: t(lang, "config_default_channel", `<#${channel.id}>`),
                 flags: 64,
-            });
+            }).catch(() => {});
         }
         return;
     }
@@ -75,21 +95,45 @@ export async function handleSlash(interaction) {
     // ─── PANEL ────────────────────────────────────────────────────────────────
     if (commandName === "panel") {
         const embed = buildPanelEmbed();
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed] }).catch(() => {});
+        return;
+    }
+
+    // ─── BAN IP — OWNER ONLY ──────────────────────────────────────────────────
+    // Checked BEFORE deferring so a non-owner gets a private refusal instead
+    // of a public "thinking…" that then resolves to an error.
+    if (commandName === "banip") {
+        if (!isOwner(interaction.member)) {
+            await interaction.reply({ content: t(lang, "no_permission_owner"), flags: 64 }).catch(() => {});
+            return;
+        }
+        const ip = interaction.options.getString("ip");
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
+        try {
+            const data = await callBanIP(ip, interaction.user.tag);
+            await interaction.editReply({
+                content: (data.success ? "🚫 " : "❌ ") + tApi(lang, data.message),
+            });
+        } catch (e) {
+            await interaction.editReply({ content: t(lang, "err_network", e.message) }).catch(() => {});
+        }
         return;
     }
 
     // ─── CLAIM ────────────────────────────────────────────────────────────────
     if (commandName === "claim") {
         const phone = interaction.options.getString("phone");
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
-            const data = await callStaffAction("claim", phone, interaction.user.tag);
+            const data = await callStaffAction("claim", phone, interaction.user.tag, null, interaction.user.id);
+            if (data.success) setClaimer(phone, interaction.user.id);
             await interaction.editReply({
-                content: data.success ? "✅ " + data.message : "❌ " + data.message,
+                content: (data.success ? "✅ " : "❌ ") + tApi(lang, data.message),
             });
         } catch (e) {
-            await interaction.editReply({ content: t(lang, "err_network", e.message) });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) }).catch(() => {});
         }
         return;
     }
@@ -98,14 +142,15 @@ export async function handleSlash(interaction) {
     if (commandName === "setlength") {
         const phone  = interaction.options.getString("phone");
         const length = interaction.options.getInteger("length");
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const data = await callStaffAction("set_length", phone, interaction.user.tag, length);
             await interaction.editReply({
-                content: data.success ? "✅ " + data.message : "❌ " + data.message,
+                content: (data.success ? "✅ " : "❌ ") + tApi(lang, data.message),
             });
         } catch (e) {
-            await interaction.editReply({ content: t(lang, "err_network", e.message) });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) }).catch(() => {});
         }
         return;
     }
@@ -113,49 +158,37 @@ export async function handleSlash(interaction) {
     // ─── WRONG NUMBER ─────────────────────────────────────────────────────────
     if (commandName === "wrongnumber") {
         const phone = interaction.options.getString("phone");
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const data = await callStaffAction("wrong_number", phone, interaction.user.tag);
             await interaction.editReply({
-                content: data.success ? "✅ " + data.message : "❌ " + data.message,
+                content: (data.success ? "✅ " : "❌ ") + tApi(lang, data.message),
             });
         } catch (e) {
-            await interaction.editReply({ content: t(lang, "err_network", e.message) });
-        }
-        return;
-    }
-
-    // ─── BAN IP ───────────────────────────────────────────────────────────────
-    if (commandName === "banip") {
-        const ip = interaction.options.getString("ip");
-        await interaction.deferReply();
-        try {
-            const data = await callBanIP(ip, interaction.user.tag);
-            await interaction.editReply({
-                content: data.success ? "🚫 " + data.message : "❌ " + data.message,
-            });
-        } catch (e) {
-            await interaction.editReply({ content: t(lang, "err_network", e.message) });
+            await interaction.editReply({ content: t(lang, "err_network", e.message) }).catch(() => {});
         }
         return;
     }
 
     // ─── STATS ────────────────────────────────────────────────────────────────
     if (commandName === "stats") {
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const [stats, today] = await Promise.all([getGlobalStats(), getTodayStats()]);
             await interaction.editReply({ embeds: [buildStatsEmbed(stats, today, lang)] });
         } catch (e) {
             console.error("Stats error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }
 
     // ─── TODAY ────────────────────────────────────────────────────────────────
     if (commandName === "today") {
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const today = await getTodayStats();
             const embed = new EmbedBuilder()
@@ -170,33 +203,35 @@ export async function handleSlash(interaction) {
             await interaction.editReply({ embeds: [embed] });
         } catch (e) {
             console.error("Today error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }
 
     // ─── OPERATORS ────────────────────────────────────────────────────────────
     if (commandName === "operators") {
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const opStats = await getOperatorStats();
             await interaction.editReply({ embeds: [buildOperatorStatsEmbed(opStats, lang)] });
         } catch (e) {
             console.error("Operators error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }
 
     // ─── ACTIVITY ─────────────────────────────────────────────────────────────
     if (commandName === "activity") {
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const hourly = await getHourlyStats();
             await interaction.editReply({ embeds: [buildHourlyStatsEmbed(hourly, lang)] });
         } catch (e) {
             console.error("Activity error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }
@@ -204,26 +239,28 @@ export async function handleSlash(interaction) {
     // ─── LEADERBOARD ──────────────────────────────────────────────────────────
     if (commandName === "leaderboard") {
         const limit = interaction.options.getInteger("limit") || 10;
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const rows = await getStaffLeaderboard(limit);
             await interaction.editReply({ embeds: [buildLeaderboardEmbed(rows, limit, lang)] });
         } catch (e) {
             console.error("Leaderboard error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }
 
     // ─── STAFF ACTIVITY ───────────────────────────────────────────────────────
     if (commandName === "staffactivity") {
-        await interaction.deferReply();
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
         try {
             const activity = await getStaffActivity();
             await interaction.editReply({ embeds: [buildStaffActivityEmbed(activity, lang)] });
         } catch (e) {
             console.error("Staff activity error:", e);
-            await interaction.editReply({ content: t(lang, "err_fetch") });
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;
     }

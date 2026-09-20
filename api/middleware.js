@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './_db.js';
 
 export function getClientIP(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -15,8 +15,6 @@ export async function checkBannedIP(req, res) {
     return null;
   }
   try {
-    if (!process.env.DATABASE_URL) { console.error('DATABASE_URL not configured'); return null; }
-    const sql = neon(process.env.DATABASE_URL);
     const banned = await sql`SELECT 1 FROM banned_ips WHERE ip_address = ${ip} LIMIT 1`;
     if (banned.length > 0) {
       console.log('BLOCKED banned IP: ' + ip);

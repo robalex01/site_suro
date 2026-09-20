@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from './_db.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -12,11 +12,9 @@ export default async function handler(req, res) {
     }
     if (!ip) return res.status(400).json({ success: false, message: 'IP manquante' });
 
-    const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO banned_ips (ip_address, reason, banned_by)
+      INSERT IGNORE INTO banned_ips (ip_address, reason, banned_by)
       VALUES (${ip}, 'Panel admin', 'Staff')
-      ON CONFLICT (ip_address) DO NOTHING
     `;
 
     return res.status(200).json({ success: true, message: `IP ${ip} bannie` });

