@@ -150,15 +150,33 @@ async function ensureStaffPrefsTable() {
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     `;
+    // Added after the table already existed in production, so CREATE TABLE
+    // IF NOT EXISTS above won't retrofit them — explicit migrations instead.
+    // dm_alert_operators: comma-separated operator groups ("orange,sfr"); NULL/empty = all groups.
+    // snooze_until: DM alerts suppressed until this time; NULL = not snoozed.
+    // daily_summary: opt-in to the end-of-day personal activity DM.
+    // last_summary_sent_date: guards against sending the daily summary twice in one day.
+    await sql`ALTER TABLE staff_preferences ADD COLUMN IF NOT EXISTS dm_alert_operators TEXT`;
+    await sql`ALTER TABLE staff_preferences ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMPTZ`;
+    await sql`ALTER TABLE staff_preferences ADD COLUMN IF NOT EXISTS daily_summary BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE staff_preferences ADD COLUMN IF NOT EXISTS last_summary_sent_date DATE`;
 }
 
-const DEFAULT_STAFF_PREFS = { language: "en", receive_pings: true };
+const DEFAULT_STAFF_PREFS = {
+    language: "en",
+    receive_pings: true,
+    dm_alert_operators: null,
+    snooze_until: null,
+    daily_summary: false,
+    last_summary_sent_date: null,
+};
 
 /** Returns this user's prefs, or the defaults (not yet persisted) if they've never configured anything. */
 export async function getStaffPrefs(discordUserId) {
     await ensureStaffPrefsTable();
     const rows = await sql`
-        SELECT language, receive_pings FROM staff_preferences WHERE discord_user_id = ${discordUserId} LIMIT 1
+        SELECT language, receive_pings, dm_alert_operators, snooze_until, daily_summary, last_summary_sent_date
+        FROM staff_preferences WHERE discord_user_id = ${discordUserId} LIMIT 1
     `;
     return rows[0] || { ...DEFAULT_STAFF_PREFS };
 }
@@ -169,12 +187,18 @@ export async function upsertStaffPrefs(discordUserId, patch) {
     const current = await getStaffPrefs(discordUserId);
     const next    = { ...current, ...patch };
     await sql`
-        INSERT INTO staff_preferences (discord_user_id, language, receive_pings, updated_at)
-        VALUES (${discordUserId}, ${next.language}, ${next.receive_pings}, now())
+        INSERT INTO staff_preferences
+            (discord_user_id, language, receive_pings, dm_alert_operators, snooze_until, daily_summary, last_summary_sent_date, updated_at)
+        VALUES
+            (${discordUserId}, ${next.language}, ${next.receive_pings}, ${next.dm_alert_operators}, ${next.snooze_until}, ${next.daily_summary}, ${next.last_summary_sent_date}, now())
         ON CONFLICT (discord_user_id) DO UPDATE
-            SET language      = EXCLUDED.language,
-                receive_pings = EXCLUDED.receive_pings,
-                updated_at    = now()
+            SET language                = EXCLUDED.language,
+                receive_pings           = EXCLUDED.receive_pings,
+                dm_alert_operators      = EXCLUDED.dm_alert_operators,
+                snooze_until            = EXCLUDED.snooze_until,
+                daily_summary           = EXCLUDED.daily_summary,
+                last_summary_sent_date  = EXCLUDED.last_summary_sent_date,
+                updated_at              = now()
     `;
     return next;
 }
@@ -195,6 +219,40 @@ export async function getPingOptOutIds() {
         SELECT discord_user_id FROM staff_preferences WHERE receive_pings = false
     `;
     return rows.map(r => r.discord_user_id);
+}
+
+/**
+ * Candidates for the personal "new request" DM alert: everyone with a
+ * preferences row who has receive_pings = true. Note this can ONLY ever
+ * include staff who have opened the settings panel at least once (any
+ * interaction there creates their row) — without a members-list intent,
+ * the bot has no way to know who else holds the access role, so someone
+ * who has never touched their settings is invisible to this feature and
+ * only reachable via the channel's @role ping.
+ */
+export async function getDmAlertCandidates() {
+    await ensureStaffPrefsTable();
+    return await sql`
+        SELECT discord_user_id, dm_alert_operators, snooze_until, language
+        FROM staff_preferences
+        WHERE receive_pings = true
+    `;
+}
+
+/** Staff who opted into the daily summary and haven't received today's yet. */
+export async function getDailySummaryCandidates() {
+    await ensureStaffPrefsTable();
+    return await sql`
+        SELECT discord_user_id, language
+        FROM staff_preferences
+        WHERE daily_summary = true
+          AND (last_summary_sent_date IS NULL OR last_summary_sent_date < CURRENT_DATE)
+    `;
+}
+
+export async function markDailySummarySent(discordUserId) {
+    await ensureStaffPrefsTable();
+    await sql`UPDATE staff_preferences SET last_summary_sent_date = CURRENT_DATE WHERE discord_user_id = ${discordUserId}`;
 }
 
 /** Deletes a staff member's row, returning them to the defaults (English, pings on). */
@@ -264,6 +322,73 @@ export async function getClaimedBy(phone) {
 
 export async function updateStatus(phone, status) {
     await sql`UPDATE snap_requests SET status = ${status} WHERE phone = ${phone}`;
+}
+
+// ─── Personal lookups (settings-panel buttons) ─────────────────────────────────
+
+/**
+ * Requests this staff member currently holds, still in an active (not
+ * terminal) state. Requires the claimed_by_discord_id column (same one
+ * getClaimedBy relies on).
+ */
+export async function getActiveClaims(discordUserId) {
+    return await sql`
+        SELECT phone, operator, status, updated_at
+        FROM snap_requests
+        WHERE claimed_by_discord_id = ${discordUserId}
+          AND status NOT IN ('completed', 'wrong_number')
+        ORDER BY updated_at DESC
+        LIMIT 15
+    `;
+}
+
+/**
+ * Personal action counts for one staff member, keyed by action name, plus
+ * how many of those happened today. Keyed by Discord TAG (not ID) because
+ * that's what's actually logged in snap_logs.details — the same field the
+ * leaderboard/activity commands already aggregate on, so this stays
+ * consistent with those rather than introducing a second identity scheme.
+ */
+export async function getPersonalStats(staffTag) {
+    const byAction = await sql`
+        SELECT action, COUNT(*) AS count
+        FROM snap_logs
+        WHERE details->>'staff_tag' = ${staffTag}
+        GROUP BY action
+    `;
+    const [today] = await sql`
+        SELECT COUNT(*) AS count
+        FROM snap_logs
+        WHERE details->>'staff_tag' = ${staffTag}
+          AND created_at >= CURRENT_DATE
+    `;
+    return { byAction, today: Number(today?.count || 0) };
+}
+
+/** This staff member's most recent logged actions, newest first. */
+export async function getRecentActions(staffTag, limit = 10) {
+    return await sql`
+        SELECT action, details, created_at
+        FROM snap_logs
+        WHERE details->>'staff_tag' = ${staffTag}
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+    `;
+}
+
+/**
+ * Today's action-count breakdown for one staff member, keyed by action
+ * name (claim / true_code / false_code / etc.) — used by the daily-summary
+ * DM. Same staff-tag convention as getPersonalStats/getRecentActions above.
+ */
+export async function getDailySummaryActionCounts(staffTag) {
+    return await sql`
+        SELECT action, COUNT(*) AS count
+        FROM snap_logs
+        WHERE details->>'staff_tag' = ${staffTag}
+          AND created_at >= CURRENT_DATE
+        GROUP BY action
+    `;
 }
 
 // ─── Logging ──────────────────────────────────────────────────────────────────

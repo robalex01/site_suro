@@ -27,17 +27,18 @@ import {
 } from "../utils/embedBuilder.js";
 import { callStaffAction, callBanIP } from "../utils/api.js";
 import { isStaff } from "../utils/permissions.js";
-import { getLang } from "../utils/userPrefs.js";
+import { getLang, peekLang } from "../utils/userPrefs.js";
 import { t } from "../utils/i18n.js";
 
 export async function handleSlash(interaction) {
     const { commandName } = interaction;
 
-    // The caller's own language. A slash reply is a direct answer to the
-    // person who typed the command, so it follows their preference — unlike
-    // the request embeds in the operator channels, which the whole team
-    // reads and therefore stay in one shared language.
-    const lang = await getLang(interaction.user.id);
+    // peekLang, not getLang: this runs BEFORE the command has acknowledged
+    // the interaction, and Discord expires the token after 3 seconds. A
+    // database round-trip here would risk losing the whole command just to
+    // decide what language to word it in. Reads the cache only — instant,
+    // never touches the network, English on a miss.
+    const lang = peekLang(interaction.user.id);
 
     // Every command is staff/owner-only — this bot has no commands meant
     // for general server members. isStaff() also returns true for OWNER.

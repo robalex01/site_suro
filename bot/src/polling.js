@@ -20,7 +20,7 @@ import { getPendingRequests, getCodeSubmittedRequests } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { getClaimer } from "./utils/claimStore.js";
 import { rememberMessage } from "./utils/messageStore.js";
-import { buildRequestPing } from "./utils/pings.js";
+import { buildRequestPing, sendNewRequestDmAlerts } from "./utils/pings.js";
 import { getLang } from "./utils/userPrefs.js";
 import { t } from "./utils/i18n.js";
 
@@ -82,10 +82,9 @@ async function sendNewRequest(client, row) {
             .setStyle(ButtonStyle.Primary),
     ];
 
-    // Ping only the staff who asked to be pinged. The embed itself stays in
-    // one language on purpose — it's a single shared channel message, and
-    // Discord cannot render one message differently per viewer.
-    const ping = await buildRequestPing(channel.guild);
+    // Ping the access role — a plain, simple @role mention. See pings.js
+    // for why this doesn't try to notify individual staff selectively.
+    const ping = buildRequestPing();
 
     try {
         const sent = await channel.send({
@@ -96,6 +95,15 @@ async function sendNewRequest(client, row) {
         });
         rememberMessage(row.phone, channel.id, sent.id);
         console.log("📨 New request sent to Discord:", row.phone);
+
+        // Fire-and-forget: the channel post already succeeded (that's what
+        // this function's return value tracks for the poll cursor). A slow
+        // or failing personal DM alert must never delay that or get retried
+        // by re-processing this row next poll.
+        sendNewRequestDmAlerts(client, row, channel).catch(e =>
+            console.warn("⚠️  DM alert dispatch error:", e.message)
+        );
+
         return true;
     } catch (e) {
         console.error(`❌ Failed to send new-request message for ${row.phone}:`, e.message || e);

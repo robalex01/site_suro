@@ -39,6 +39,12 @@ function retryLabel(row) {
 
 // ─── New request ──────────────────────────────────────────────────────────────
 
+// buildNewRequestEmbed deliberately omits the username: it's posted into a
+// shared operator channel everyone can see, and the username is only meant
+// to be known by whoever actually commits to handling the request. It's
+// revealed to the claimer in their private claim confirmation instead (see
+// buttons.js) — never written into this public embed or any later edit of
+// the same channel message, since those stay visible to the whole team.
 export function buildNewRequestEmbed(row) {
     const color   = getOperatorColor(row.operator);
     const carrier = getCarrierName(row.operator);
@@ -48,7 +54,7 @@ export function buildNewRequestEmbed(row) {
         .setTitle("📱 New Snapchat+ Request")
         .setColor(color)
         .setDescription(
-            `🆔 \`#${row.id}\`  ·  👤 **${row.username}**\n` +
+            `🆔 \`#${row.id}\`\n` +
             `──────────────────────`
         )
         .addFields(

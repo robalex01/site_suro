@@ -1,5 +1,17 @@
 /**
- * buttons.js — Discord button interaction handler  (v2.6)
+ * buttons.js — Discord button interaction handler  (v2.7)
+ *
+ * v2.7 — Cache-miss-safe message edits:
+ *  - safeEditMessage now takes the client and retries via an explicit
+ *    channel/message fetch if the direct `message.edit()` call fails.
+ *    Previously a bare `interaction.message.edit(...)` failed outright with
+ *    "Could not find the channel where this message came from in the
+ *    cache!" whenever the channel wasn't in discord.js's cache yet — most
+ *    commonly right after a bot restart, before that channel has been
+ *    otherwise touched. The refetch path (client.channels.fetch +
+ *    channel.messages.fetch) populates the cache on demand instead of
+ *    giving up, matching the pattern refreshChannelMessage() already used
+ *    for the DM -> channel refresh case.
  *
  * v2.6 — Permissions + cross-context refresh:
  *  - Every button now requires the STAFF role (or OWNER, which implies it) —
@@ -67,7 +79,7 @@ import { callStaffAction, callBanIP }                    from "../utils/api.js";
 import { setClaimer, clearClaimer, getClaimer, peekClaimer } from "../utils/claimStore.js";
 import { recallMessage, forgetMessage }                  from "../utils/messageStore.js";
 import { isStaff, isOwner }                               from "../utils/permissions.js";
-import { getLang }                                        from "../utils/userPrefs.js";
+import { getLang, peekLang }                               from "../utils/userPrefs.js";
 import { t }                                               from "../utils/i18n.js";
 
 // WHAT IS AND ISN'T TRANSLATED IN THIS FILE
@@ -165,10 +177,32 @@ function buildPostClaimRow(phone, ip) {
     return new ActionRowBuilder().addComponents(...buttons);
 }
 
-/** Edit a message silently (stale interaction tokens don't crash the bot). */
-async function safeEditMessage(message, options) {
-    try { await message.edit(options); }
-    catch (e) { console.warn("⚠️  Could not edit message (stale?):", e.message); }
+/**
+ * Edit a message silently (stale interaction tokens don't crash the bot).
+ *
+ * `message.edit()` alone fails with "Could not find the channel where this
+ * message came from in the cache!" whenever the parent channel isn't in
+ * discord.js's cache — most commonly right after a bot restart, for a
+ * channel nothing else has touched yet. When that happens, retry once via
+ * an explicit fetch (client.channels.fetch + channel.messages.fetch), which
+ * populates the cache on demand instead of just giving up. Only a genuine
+ * failure after that retry (message actually deleted, missing permissions,
+ * etc.) is logged and swallowed.
+ */
+async function safeEditMessage(client, message, options) {
+    try {
+        await message.edit(options);
+        return;
+    } catch (e) {
+        console.warn(`⚠️  Could not edit message ${message.id} directly (${e.message}) — retrying via fetch…`);
+    }
+    try {
+        const channel = await client.channels.fetch(message.channelId);
+        const fresh   = await channel.messages.fetch(message.id);
+        await fresh.edit(options);
+    } catch (e2) {
+        console.warn(`⚠️  Could not edit message ${message.id} even after refetching:`, e2.message);
+    }
 }
 
 /**
@@ -229,7 +263,12 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
     // Self-heal: our own claim actually went through, we just didn't hear back in time.
     if (realClaimer === interaction.user.id) {
         setClaimer(phone, interaction.user.id);
-        await safeReply(interaction, deferred, { content: t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`) });
+        // Username is revealed only here, in the claimer's own ephemeral
+        // reply — never written into the shared channel embed below.
+        const claimedContent = row?.username
+            ? `${t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`)}\n${t(lang, "claimed_username", row.username)}`
+            : t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`);
+        await safeReply(interaction, deferred, { content: claimedContent });
         const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(getOperatorColor(row?.operator))
             .setTitle("📋 Request In Progress")
@@ -238,7 +277,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
                 `⏰ Claimed <t:${Math.floor(Date.now() / 1000)}:R>\n\n` +
                 `**🔧 Choose an action:**`
             );
-        await safeEditMessage(interaction.message, {
+        await safeEditMessage(interaction.client, interaction.message, {
             content:    pingUser(interaction.user.id),
             embeds:     [newEmbed],
             components: [buildPostClaimRow(phone, row?.ip_address)],
@@ -262,7 +301,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
             .setColor(getOperatorColor(row.operator))
             .setTitle("📋 Request In Progress")
             .setDescription(`👤 Already claimed by <@${realClaimer}>\n\n**🔧 Choose an action:**`);
-        await safeEditMessage(interaction.message, {
+        await safeEditMessage(interaction.client, interaction.message, {
             content:    pingUser(realClaimer),
             embeds:     [staleEmbed],
             components: [buildPostClaimRow(phone, row.ip_address)],
@@ -273,7 +312,7 @@ async function handleFailedClaim(interaction, deferred, phone, apiMessage, lang 
             .setColor(0x6b7280)
             .setTitle("⚠️ Request No Longer Available")
             .setDescription(`This request's status is now \`${row.status}\` — it can no longer be claimed here.`);
-        await safeEditMessage(interaction.message, { content: "", embeds: [staleEmbed], components: [] });
+        await safeEditMessage(interaction.client, interaction.message, { content: "", embeds: [staleEmbed], components: [] });
     }
 }
 
@@ -299,8 +338,9 @@ export async function handleButton(interaction) {
     // comparison, which needs no role information to be secure).
     if (interaction.inGuild() && !isStaff(interaction.member)) {
         try {
-            const lang = await getLang(interaction.user.id);
-            await interaction.reply({ content: t(lang, "no_permission"), flags: 64 });
+            // peekLang, not getLang: nothing has acked this interaction yet,
+            // so this path must never touch the database.
+            await interaction.reply({ content: t(peekLang(interaction.user.id), "no_permission"), flags: 64 });
         } catch (e) {
             console.warn(`⚠️  Could not send permission-denied reply for ${interaction.id}:`, e.message);
         }
@@ -339,9 +379,17 @@ export async function handleButton(interaction) {
             }
 
             setClaimer(phone, interaction.user.id);
-            await safeReply(interaction, deferred, { content: t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`) });
 
-            const row      = await getRequestByPhone(phone);
+            // Fetch the request row BEFORE replying so the username can be
+            // included in this ephemeral confirmation — the only place it's
+            // ever shown, since it's deliberately left out of the public
+            // channel embed (see buildNewRequestEmbed).
+            const row = await getRequestByPhone(phone);
+            const claimedContent = row?.username
+                ? `${t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`)}\n${t(lang, "claimed_username", row.username)}`
+                : t(lang, "claimed", formatPhone(phone), `<@${interaction.user.id}>`);
+            await safeReply(interaction, deferred, { content: claimedContent });
+
             const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(getOperatorColor(row?.operator))
                 .setTitle("📋 Request In Progress")
@@ -351,7 +399,7 @@ export async function handleButton(interaction) {
                     `**🔧 Choose an action:**`
                 );
 
-            await safeEditMessage(interaction.message, {
+            await safeEditMessage(interaction.client, interaction.message, {
                 content:    pingUser(interaction.user.id),
                 embeds:     [newEmbed],
                 components: [buildPostClaimRow(phone, row?.ip_address)],
@@ -384,7 +432,7 @@ export async function handleButton(interaction) {
             const bannedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xef4444).setTitle("🔨 IP Banned")
                 .setDescription(`🚫 \`${ip}\` banned by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
-            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [bannedEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [bannedEmbed], components: [] });
         } catch (e) {
             console.error("banip error:", e);
             await safeReply(interaction, deferred, { content: t(lang, "network_error_ban") });
@@ -425,7 +473,7 @@ export async function handleButton(interaction) {
                     `⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n` +
                     `*Waiting for the user to enter it…*`
                 );
-            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
         } catch (e) { console.error("len4 error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -444,7 +492,7 @@ export async function handleButton(interaction) {
                     `⏰ <t:${Math.floor(Date.now() / 1000)}:R>\n\n` +
                     `*Waiting for the user to enter it…*`
                 );
-            await safeEditMessage(interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
         } catch (e) { console.error("len6 error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -461,7 +509,7 @@ export async function handleButton(interaction) {
             const doneEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xef4444).setTitle("❌ Wrong Number")
                 .setDescription(`❌ The user is being redirected to re-enter their number.\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
-            await safeEditMessage(interaction.message, { content: pingUser(reporter), embeds: [doneEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { content: pingUser(reporter), embeds: [doneEmbed], components: [] });
         } catch (e) { console.error("wrong error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -484,7 +532,7 @@ export async function handleButton(interaction) {
                 .setColor(0x6b7280).setTitle("📭 Request Unclaimed")
                 .setDescription(`↩️ Unclaimed by <@${interaction.user.id}>\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>\nBack in the waiting queue.`);
             // Back in the pool for anyone to grab — ping @access again, like a new request.
-            await safeEditMessage(interaction.message, {
+            await safeEditMessage(interaction.client, interaction.message, {
                 content:    pingAccessRole(),
                 embeds:     [unclaimedEmbed],
                 components: [new ActionRowBuilder().addComponents(...btns)],
@@ -510,7 +558,7 @@ export async function handleButton(interaction) {
             const dmEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0x10b981).setTitle(t(lang, "dm_truecode_title"))
                 .setDescription(t(lang, "dm_truecode_desc", Math.floor(Date.now() / 1000)));
-            await safeEditMessage(interaction.message, { embeds: [dmEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { embeds: [dmEmbed], components: [] });
 
             await refreshChannelMessage(interaction.client, phone, (msg) =>
                 ({
@@ -547,7 +595,7 @@ export async function handleButton(interaction) {
             const dmEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                 .setColor(0xf59e0b).setTitle(t(lang, "dm_falsecode_title"))
                 .setDescription(t(lang, "dm_falsecode_desc"));
-            await safeEditMessage(interaction.message, { embeds: [dmEmbed], components: [] });
+            await safeEditMessage(interaction.client, interaction.message, { embeds: [dmEmbed], components: [] });
 
             const row = await getRequestByPhone(phone);
             await refreshChannelMessage(interaction.client, phone, (msg) =>
