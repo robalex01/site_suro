@@ -5,9 +5,12 @@
  * only ever imported.)
  *
  * Connection, from the Vercel environment variables:
- *   DATABASE_URL = mysql://user:password@host:3306/dbname   (URL-encode special chars in the password)
+ *   DATABASE_URL = mysql://user:password@host:3306/dbname
  *   — or —
- *   DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME     (no encoding needed; wins over DATABASE_URL)
+ *   DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME     (wins over DATABASE_URL)
+ *
+ * The URL is parsed by hand (see parseDbUrl) so a password containing @ # / ? :
+ * works without URL-encoding it. DB_* is still the most foolproof option.
  *
  * Every connection is switched to UTC (SET time_zone = '+00:00') so that
  * NOW() / CURRENT_TIMESTAMP defaults, and the JS Dates read back, always agree
@@ -21,35 +24,63 @@ import { createPool } from 'mysql2/promise';
 
 let pool = null;
 
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
+/**
+ * Tolerant mysql:// URL parser. The user info is everything before the LAST '@',
+ * split at the first ':' — so the password may itself contain @ # / ? : and so on
+ * (the WHATWG `new URL()` rejects or truncates those).
+ */
+function parseDbUrl(raw) {
+  const s = String(raw || '')
+    .trim()
+    .replace(/^DATABASE_URL\s*=\s*/i, '')   // value pasted together with its key
+    .replace(/^(["'])(.*)\1$/, '$2');       // surrounding quotes
+
+  if (/^postgres(ql)?:/i.test(s)) {
+    throw new Error('DATABASE_URL still points to Postgres (postgres://…). Replace it with mysql://user:password@host:3306/dbname');
+  }
+  const m = s.match(/^(?:mysql|mariadb):\/\/(.*)@([^@/?#]+)(\/[^?#]*)?(\?.*)?$/i);
+  if (!m) {
+    throw new Error(`DATABASE_URL is not valid (expected mysql://user:password@host:3306/dbname) — it starts with "${s.slice(0, 8)}" and is ${s.length} characters long`);
+  }
+
+  const [, userinfo, hostport, path = '', query = ''] = m;
+  const colon = userinfo.indexOf(':');
+  const hp    = hostport.match(/^(.*?)(?::(\d+))?$/);
+
+  return {
+    host:     hp[1],
+    port:     hp[2] ? Number(hp[2]) : 3306,
+    user:     safeDecode(colon < 0 ? userinfo : userinfo.slice(0, colon)),
+    password: colon < 0 ? '' : safeDecode(userinfo.slice(colon + 1)),
+    database: safeDecode(path.replace(/^\//, '')),
+    ssl:      /[?&]ssl=(true|1)\b/i.test(query),
+  };
+}
+
 function buildOptions() {
   const env = process.env;
   let base;
 
   if (env.DB_HOST) {
+    // DB_HOST may be written "host" or "host:3306" — the port is split off either way.
+    const rawHost = env.DB_HOST.trim();
+    const hostPort = rawHost.match(/^(.*?):(\d+)$/);
     base = {
-      host:     env.DB_HOST,
-      port:     parseInt(env.DB_PORT, 10) || 3306,
+      host:     hostPort ? hostPort[1] : rawHost,
+      port:     hostPort ? Number(hostPort[2]) : (parseInt(env.DB_PORT, 10) || 3306),
       user:     env.DB_USER,
       password: env.DB_PASSWORD || '',
       database: env.DB_NAME,
     };
   } else {
     if (!env.DATABASE_URL) throw new Error('DATABASE_URL not configured');
-    let url;
-    try { url = new URL(env.DATABASE_URL); }
-    catch { throw new Error('DATABASE_URL is not a valid URL (expected mysql://user:password@host:3306/dbname)'); }
-    if (!/^(mysql|mariadb):$/.test(url.protocol)) {
-      throw new Error(`DATABASE_URL must start with mysql:// (got "${url.protocol}//") — the old Neon/Postgres URL must be replaced.`);
-    }
-    base = {
-      host:     url.hostname,
-      port:     Number(url.port) || 3306,
-      user:     decodeURIComponent(url.username),
-      password: decodeURIComponent(url.password),
-      database: decodeURIComponent(url.pathname.replace(/^\//, '')),
-    };
-    const ssl = url.searchParams.get('ssl');
-    if (ssl === 'true' || ssl === '1') base.ssl = { rejectUnauthorized: false };
+    const { ssl, ...parsed } = parseDbUrl(env.DATABASE_URL);
+    base = parsed;
+    if (ssl) base.ssl = { rejectUnauthorized: false };
   }
 
   return {

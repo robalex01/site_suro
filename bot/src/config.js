@@ -24,8 +24,9 @@ export const CONFIG = {
     // or the separate DB_* variables below (DB_HOST wins if both are set).
     DATABASE_URL:   process.env.DATABASE_URL,
     DB: {
-        HOST:     process.env.DB_HOST     || null,
-        PORT:     parseInt(process.env.DB_PORT, 10) || 3306,
+        // DB_HOST may be written "host" or "host:3306" — the port is split off either way.
+        HOST:     (process.env.DB_HOST || "").trim().replace(/:\d+$/, "") || null,
+        PORT:     parseInt((process.env.DB_HOST || "").trim().match(/:(\d+)$/)?.[1], 10) || parseInt(process.env.DB_PORT, 10) || 3306,
         USER:     process.env.DB_USER     || null,
         PASSWORD: process.env.DB_PASSWORD || "",
         NAME:     process.env.DB_NAME     || null,

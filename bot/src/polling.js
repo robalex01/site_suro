@@ -1,6 +1,33 @@
 /**
  * polling.js — DB polling for new Discord notifications
  *
+ * v4.1 — MySQL migration fix: "webhook message arrives, bot embeds never do".
+ *
+ *  - CURSORS ARE NO LONGER BUILT FROM THE CLOCK. They used to start at
+ *    NOW() - 30s, where NOW() is evaluated in the BOT's DB session. But
+ *    snap_requests.updated_at is written by the website, in ITS session. When
+ *    the two sessions are not in the same time zone (prod: bot rows stamped
+ *    2 h ahead of the site's rows) the cursor sat 2 h in the future and
+ *    `updated_at > cursor` matched nothing, forever — no error, no log, no
+ *    embed, bot_request_messages stayed empty. The cursors are now seeded
+ *    from MAX(updated_at) of the table itself, which is always in the same
+ *    clock domain as the rows being compared.
+ *
+ *  - STARTUP CATCH-UP. Because the cursor now starts at "everything already
+ *    there", pending requests that were never posted (bot down, previous
+ *    cursor bug, channel error) are picked up separately: every pending row
+ *    with no entry in bot_request_messages is posted once at boot.
+ *
+ *  - NO SILENT LOSS. A missing/uncached channel used to be reported as
+ *    "delivered" (so the request vanished for good). The channel is now
+ *    fetched if it isn't cached, and if it still can't be reached the send
+ *    counts as a failure and goes through the normal retry/backoff.
+ *
+ *  - EMBED DIAGNOSTICS. If Discord accepts the message but drops the embed
+ *    (bot lacks "Embed Links" in the channel — you then see the @role ping
+ *    with nothing under it), a clear warning is logged, and missing
+ *    View/Send/Embed permissions are reported before the send.
+ *
  * v4.0 — Reliability pass (driven by the production console):
  *
  *  - NO MORE OVERLAPPING POLLS. The old setInterval fired every 5s no matter
@@ -35,9 +62,9 @@
  *    command, owner-only, is the one way to ban now).
  */
 
-import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
+import { ButtonBuilder, ButtonStyle, ActionRowBuilder, PermissionFlagsBits } from "discord.js";
 import { CONFIG, getChannelIdForOperator } from "./config.js";
-import { getPendingRequests, getCodeSubmittedRequests, getDbNow } from "./database.js";
+import { getPendingRequests, getCodeSubmittedRequests, getPollingSeed, getUnsentPendingRequests } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { getClaimer } from "./utils/claimStore.js";
 import { rememberMessage } from "./utils/messageStore.js";
@@ -54,24 +81,41 @@ const ERROR_LOG_EVERY_MS   = 30_000;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-/** Initialised 30 s in the past so nothing is missed on a bot restart. */
-let lastPendingAt       = new Date(Date.now() - 30_000);
-let lastCodeSubmittedAt = new Date(Date.now() - 30_000);
+/** Seeded from the database (see initCursors) — never from the bot host's clock. */
+let lastPendingAt       = new Date(0);
+let lastCodeSubmittedAt = new Date(0);
+let cursorsReady        = false;
+/** True once every pending request without a Discord message has been posted. */
+let catchUpDone         = false;
 
 /**
- * Seeds both cursors from the DATABASE's clock instead of the bot host's.
- * updated_at is written by the DB/PHP side in the DB server's timezone; if
- * that differs from this host's (UTC), a cursor based on Date.now() would
- * either re-send every recent pending request on each restart or miss new
- * ones for hours. Falls back to the local clock if the DB can't be reached.
+ * Seeds both cursors from the newest updated_at already in snap_requests.
+ * That value comes from the very same column the poll queries compare
+ * against, so it is correct whatever time zone the site / the bot's DB
+ * session / the DB server use. Throws if the database can't be reached — the
+ * poll loop just tries again on its next tick (nothing is polled until then).
  */
 async function initCursors() {
-    try {
-        const start = new Date((await getDbNow()).getTime() - 30_000);
-        lastPendingAt       = start;
-        lastCodeSubmittedAt = start;
-    } catch (e) {
-        console.warn(`⚠️  Could not read the database clock, polling from the local clock instead: ${e.message}`);
+    const seed  = await getPollingSeed();
+    const start = seed.latest || new Date(0);
+
+    lastPendingAt       = start;
+    lastCodeSubmittedAt = start;
+    cursorsReady        = true;
+
+    const iso = (d) => d.toISOString().replace("T", " ").replace("Z", "");
+    console.log(
+        `🕒 Polling seeded — DB session tz: ${seed.tz} · NOW(): ${iso(seed.dbNow)} · UTC: ${iso(seed.dbUtc)} · ` +
+        `newest updated_at: ${seed.latest ? iso(seed.latest) : "(table empty)"}`
+    );
+
+    const skewMs = seed.dbNow.getTime() - seed.dbUtc.getTime();
+    if (Math.abs(skewMs) > 1_500) {
+        console.warn(
+            `⚠️  The bot's DB session is ${(skewMs / 3_600_000).toFixed(1)} h away from UTC — its "SET time_zone = '+00:00'" is not taking effect ` +
+            `(is the deployed database.js the current one?). Polling no longer depends on it, but timestamps written by the bot ` +
+            `(bot_* tables, staff_preferences) will be offset from the site's.`
+        );
     }
 }
 
@@ -79,6 +123,8 @@ async function initCursors() {
 const delivered = new Map();
 /** "kind:phone:updatedAtMs" -> { count, firstAt, nextAt }. Drives per-row backoff. */
 const retryState = new Map();
+/** Channels we already warned about missing permissions (warn once, not on every request). */
+const warnedPerms = new Set();
 
 let consecutiveFailedTicks = 0;
 let lastErrorLogAt         = 0;
@@ -86,18 +132,50 @@ let suppressedErrors       = 0;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Resolve the right channel for a request based on its carrier (Orange/SFR/Bouygues/Belgium). */
-function getChannelForOperator(client, operator) {
+function rowKey(kind, row) {
+    return `${kind}:${row.phone}:${new Date(row.updated_at).getTime()}`;
+}
+
+/**
+ * Resolve the right channel for a request based on its carrier
+ * (Orange/SFR/Bouygues/Belgium). Falls back to fetching the channel from
+ * Discord when it isn't in the cache, instead of giving up right away.
+ */
+async function resolveChannel(client, operator) {
     const channelId = getChannelIdForOperator(operator);
     if (!channelId) {
         console.warn(`⚠️  No channel configured for operator "${operator}" and no default channel set — use /config`);
         return null;
     }
-    const channel = client.channels.cache.get(channelId);
+    let channel = client.channels.cache.get(channelId);
     if (!channel) {
-        console.warn(`⚠️  Configured channel ${channelId} for operator "${operator}" was not found (wrong ID or bot not in that channel)`);
+        try {
+            channel = await client.channels.fetch(channelId);
+        } catch (e) {
+            console.warn(`⚠️  Configured channel ${channelId} for operator "${operator}" could not be fetched (wrong ID, or the bot can't see that channel): ${e.message}`);
+            return null;
+        }
     }
     return channel || null;
+}
+
+/** Logs (once per channel) which of View / Send / Embed Links the bot is missing there. */
+function checkChannelPermissions(client, channel) {
+    if (warnedPerms.has(channel.id)) return;
+    try {
+        const me    = channel.guild?.members?.me;
+        const perms = me ? channel.permissionsFor(me) : null;
+        if (!perms) return;
+        const missing = perms.missing([
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.EmbedLinks,
+        ]);
+        if (missing.length > 0) {
+            warnedPerms.add(channel.id);
+            console.warn(`⚠️  Bot is missing permission(s) in #${channel.name} (${channel.id}): ${missing.join(", ")} — without "EmbedLinks" Discord posts the message text but silently drops every embed.`);
+        }
+    } catch { /* diagnostics only */ }
 }
 
 function pruneState() {
@@ -125,8 +203,13 @@ function logPollError(e) {
 // ─── Senders ──────────────────────────────────────────────────────────────────
 
 async function sendNewRequest(client, row) {
-    const channel = getChannelForOperator(client, row.operator);
-    if (!channel) return true; // no channel configured — not a delivery failure, don't retry forever
+    const channel = await resolveChannel(client, row.operator);
+    // Not reachable right now → a FAILURE (retried with backoff, abandoned
+    // after 30 min), not a success: reporting success here made the request
+    // disappear for good.
+    if (!channel) return false;
+
+    checkChannelPermissions(client, channel);
 
     const embed = buildNewRequestEmbed(row);
     const buttons = [
@@ -149,6 +232,10 @@ async function sendNewRequest(client, row) {
         });
         rememberMessage(row.phone, channel.id, sent.id);
         console.log("📨 New request sent to Discord:", row.phone);
+
+        if (sent.embeds.length === 0) {
+            console.warn(`⚠️  Message ${sent.id} for ${row.phone} was posted WITHOUT its embed — the bot almost certainly lacks the "Embed Links" permission in #${channel.name} (${channel.id}).`);
+        }
 
         // Fire-and-forget: the channel post already succeeded (that's what
         // this function's return value tracks). A slow or failing personal DM
@@ -214,7 +301,7 @@ async function sendCodeSubmitted(client, row, attempt) {
     }
 
     // Fallback: post in the operator channel so the request isn't lost.
-    const channel = getChannelForOperator(client, row.operator);
+    const channel = await resolveChannel(client, row.operator);
     if (!channel) return false; // nowhere to deliver — will retry
     try {
         // Fallback into a shared channel: rebuild the embed in English since
@@ -247,7 +334,7 @@ async function processRows(rows, kind, cursor, send) {
 
     for (const row of rows) {
         const rowAt = new Date(row.updated_at);
-        const key   = `${kind}:${row.phone}:${rowAt.getTime()}`;
+        const key   = rowKey(kind, row);
         let ok      = delivered.has(key);
 
         if (!ok) {
@@ -298,6 +385,17 @@ async function processRows(rows, kind, cursor, send) {
 // Both throw on a database failure — the tick handler owns logging/backoff.
 
 async function pollPending(client) {
+    // One-time catch-up: pending requests the bot never posted (no tracked
+    // Discord message). Repeats each tick only until all of them went out.
+    if (!catchUpDone) {
+        const missed = await getUnsentPendingRequests();
+        if (missed.length > 0) {
+            console.log(`📬 Catch-up: ${missed.length} pending request${missed.length === 1 ? "" : "s"} never posted to Discord — sending now`);
+            await processRows(missed, "pending", new Date(0), (row) => sendNewRequest(client, row));
+        }
+        catchUpDone = missed.every(r => delivered.has(rowKey("pending", r)));
+    }
+
     const rows = await getPendingRequests(lastPendingAt);
     if (rows.length === 0) return;
     lastPendingAt = await processRows(rows, "pending", lastPendingAt, (row) => sendNewRequest(client, row));
@@ -334,12 +432,16 @@ async function tick(client) {
  * finished, so polls can never overlap. While ticks are failing the delay
  * doubles (5s → 10s → 20s → 30s max) to stop hammering an unreachable
  * database; it snaps back to 5s on the first success.
+ *
+ * Nothing is polled until the cursors have been seeded from the database
+ * (retried on every tick until it works).
  */
 export function startPolling(client) {
     console.log(`🔄 Polling started — interval: ${POLL_INTERVAL_MS / 1000}s (no overlap, backs off up to ${MAX_POLL_BACKOFF_MS / 1000}s on errors)`);
 
     const loop = async () => {
         try {
+            if (!cursorsReady) await initCursors();
             await tick(client);
         } catch (e) {
             consecutiveFailedTicks++;
@@ -350,5 +452,5 @@ export function startPolling(client) {
             : Math.min(MAX_POLL_BACKOFF_MS, POLL_INTERVAL_MS * 2 ** Math.min(consecutiveFailedTicks, 3));
         setTimeout(loop, delay);
     };
-    initCursors().finally(loop);
+    loop();
 }

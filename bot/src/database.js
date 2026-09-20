@@ -22,6 +22,46 @@ import { CONFIG } from "./config.js";
 
 // ─── Pool ─────────────────────────────────────────────────────────────────────
 
+function safeDecode(s) {
+    try { return decodeURIComponent(s); } catch { return s; }
+}
+
+/**
+ * Tolerant mysql:// URL parser. The user info is everything before the LAST '@',
+ * split at the first ':' — so the password may itself contain @ # / ? : and so on
+ * (the WHATWG `new URL()` rejects or truncates those).
+ */
+function parseDbUrl(raw) {
+    const s = String(raw || "")
+        .trim()
+        .replace(/^DATABASE_URL\s*=\s*/i, "")   // value pasted together with its key
+        .replace(/^(["'])(.*)\1$/, "$2");       // surrounding quotes
+
+    if (/^postgres(ql)?:/i.test(s)) {
+        throw new Error(
+            "DATABASE_URL still points to Postgres (postgres://…) — the bot now uses MySQL/MariaDB. " +
+            "Replace it with mysql://user:password@host:3306/dbname (or set DB_HOST / DB_USER / DB_PASSWORD / DB_NAME instead)."
+        );
+    }
+    const m = s.match(/^(?:mysql|mariadb):\/\/(.*)@([^@/?#]+)(\/[^?#]*)?(\?.*)?$/i);
+    if (!m) {
+        throw new Error(`DATABASE_URL is not valid (expected mysql://user:password@host:3306/dbname) — it starts with "${s.slice(0, 8)}" and is ${s.length} characters long`);
+    }
+
+    const [, userinfo, hostport, path = "", query = ""] = m;
+    const colon = userinfo.indexOf(":");
+    const hp    = hostport.match(/^(.*?)(?::(\d+))?$/);
+
+    return {
+        host:     hp[1],
+        port:     hp[2] ? Number(hp[2]) : 3306,
+        user:     safeDecode(colon < 0 ? userinfo : userinfo.slice(0, colon)),
+        password: colon < 0 ? "" : safeDecode(userinfo.slice(colon + 1)),
+        database: safeDecode(path.replace(/^\//, "")),
+        ssl:      /[?&]ssl=(true|1)\b/i.test(query),
+    };
+}
+
 function buildPoolOptions() {
     let base;
 
@@ -34,26 +74,9 @@ function buildPoolOptions() {
             database: CONFIG.DB.NAME,
         };
     } else {
-        let url;
-        try { url = new URL(CONFIG.DATABASE_URL); }
-        catch { throw new Error("DATABASE_URL is not a valid URL. Expected: mysql://user:password@host:3306/dbname"); }
-
-        if (!/^(mysql|mariadb):$/.test(url.protocol)) {
-            throw new Error(
-                `DATABASE_URL must start with mysql:// (got "${url.protocol}//"). ` +
-                "The bot now uses MySQL/MariaDB — replace the old Neon URL, e.g. mysql://user:password@host:3306/dbname " +
-                "(or set DB_HOST / DB_USER / DB_PASSWORD / DB_NAME instead)."
-            );
-        }
-        base = {
-            host:     url.hostname,
-            port:     Number(url.port) || 3306,
-            user:     decodeURIComponent(url.username),
-            password: decodeURIComponent(url.password),
-            database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-        };
-        const ssl = url.searchParams.get("ssl");
-        if (ssl === "true" || ssl === "1") base.ssl = { rejectUnauthorized: false };
+        const { ssl, ...parsed } = parseDbUrl(CONFIG.DATABASE_URL);
+        base = parsed;
+        if (ssl) base.ssl = { rejectUnauthorized: false };
     }
 
     return {
@@ -143,6 +166,43 @@ export function query(text, params = []) {
 export async function getDbNow() {
     const [row] = await sql`SELECT NOW(3) AS now`;
     return new Date(row.now);
+}
+
+/**
+ * Seed for the polling cursors, taken from the DATA itself.
+ *
+ * WHY NOT NOW(): snap_requests.updated_at is written by the website (its own
+ * session time zone), whereas NOW() here is evaluated in THIS bot's session.
+ * If the two sessions are not in the same time zone (seen in prod: the bot's
+ * rows were stamped 2 h ahead of the site's), a cursor built from NOW() sits
+ * in the future relative to every request and the poller never finds any of
+ * them — no error, no log, no embed. MAX(updated_at) is by construction in
+ * the same clock domain as the rows we compare it with.
+ *
+ * dbNow / dbUtc / tz are returned only so the startup log can say whether the
+ * bot's session is really on UTC.
+ */
+export async function getPollingSeed() {
+    const [row] = await sql`
+        SELECT MAX(updated_at)      AS latest,
+               NOW(3)           AS db_now,
+               UTC_TIMESTAMP(3) AS db_utc,
+               @@session.time_zone AS tz
+        FROM snap_requests
+    `;
+    return {
+        latest: row.latest ? new Date(row.latest) : null,
+        dbNow:  new Date(row.db_now),
+        dbUtc:  new Date(row.db_utc),
+        tz:     row.tz,
+    };
+}
+
+/** One-shot snapshot for the startup log: session timezone, DB clock, and the pending queue. */
+export async function getPollingDiagnostics() {
+    const [info]    = await sql`SELECT @@session.time_zone AS tz, NOW(3) AS now`;
+    const [pending] = await sql`SELECT COUNT(*) AS n, MAX(updated_at) AS latest FROM snap_requests WHERE status = 'pending'`;
+    return { tz: info.tz, now: new Date(info.now), pending: Number(pending.n), latest: pending.latest ? new Date(pending.latest) : null };
 }
 
 /**
@@ -553,7 +613,7 @@ export async function getPersonalStats(staffTag) {
         `SELECT COUNT(*) AS \`count\`
          FROM snap_logs
          WHERE ${STAFF_TAG} = ?
-           AND created_at >= CURDATE()`,
+           AND created_at >= UTC_DATE()`,
         [staffTag]
     );
     return { byAction, today: Number(today?.count || 0) };
@@ -579,7 +639,7 @@ export async function getDailySummaryActionCounts(staffTag) {
         `SELECT action, COUNT(*) AS \`count\`
          FROM snap_logs
          WHERE ${STAFF_TAG} = ?
-           AND created_at >= CURDATE()
+           AND created_at >= UTC_DATE()
          GROUP BY action`,
         [staffTag]
     );
@@ -612,6 +672,25 @@ export async function getPendingRequests(since) {
         FROM snap_requests
         WHERE status = 'pending' AND updated_at > ${since}
         ORDER BY updated_at ASC
+    `;
+}
+
+/**
+ * Pending requests that have NO Discord message tracked in bot_request_messages —
+ * i.e. requests the bot never managed to post (bot was down / cursor bug /
+ * channel error). Used once at startup as a catch-up so nothing stays invisible.
+ * (Terminal states call forgetMessage(), so only genuinely un-posted or
+ * re-submitted requests match.)
+ */
+export async function getUnsentPendingRequests() {
+    await ensureRequestMessagesTable();
+    return await sql`
+        SELECT r.id, r.username, r.phone, r.operator, r.country, r.city, r.ip_address,
+               r.status, r.created_at, r.updated_at
+        FROM snap_requests r
+        LEFT JOIN bot_request_messages m ON m.phone = r.phone
+        WHERE r.status = 'pending' AND m.phone IS NULL
+        ORDER BY r.updated_at ASC
     `;
 }
 
@@ -656,7 +735,7 @@ export async function getTodayStats() {
             COUNT(*)                                          AS requests,
             COUNT(CASE WHEN status = 'completed' THEN 1 END)  AS completed
         FROM snap_requests
-        WHERE created_at >= CURDATE()
+        WHERE created_at >= UTC_DATE()
     `;
     return today;
 }
@@ -674,7 +753,7 @@ export async function getHourlyStats() {
     return await sql`
         SELECT EXTRACT(HOUR FROM created_at) AS \`hour\`, COUNT(*) AS \`count\`
         FROM snap_requests
-        WHERE created_at >= NOW() - INTERVAL 24 HOUR
+        WHERE created_at >= UTC_TIMESTAMP() - INTERVAL 24 HOUR
         GROUP BY EXTRACT(HOUR FROM created_at)
         ORDER BY \`hour\`
     `;
