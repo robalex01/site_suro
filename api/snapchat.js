@@ -17,7 +17,7 @@
  *     it is actively being handled and was left untouched.
  */
 
-import { sql }                        from './_db.js';
+import { sql, fail }                  from './_db.js';
 import { getClientIP, checkBannedIP } from './middleware.js';
 
 export default async function handler(req, res) {
@@ -136,7 +136,6 @@ export default async function handler(req, res) {
             data: { id: row.id, username: row.username, phone: row.phone },
         });
     } catch (error) {
-        console.error('DB Error:', error);
-        return res.status(500).json({ success: false, message: error.message || 'Server error' });
+        return fail(res, error, 'snapchat');
     }
 }

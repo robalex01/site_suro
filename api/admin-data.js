@@ -1,4 +1,4 @@
-import { sql } from './_db.js';
+import { sql, fail } from './_db.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -37,6 +37,6 @@ export default async function handler(req, res) {
       requests
     });
   } catch (e) {
-    return res.status(500).json({ success: false, message: e.message });
+    return fail(res, e, 'admin-data');
   }
 }

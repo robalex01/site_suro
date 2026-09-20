@@ -13,10 +13,11 @@
  *    from MAX(updated_at) of the table itself, which is always in the same
  *    clock domain as the rows being compared.
  *
- *  - STARTUP CATCH-UP. Because the cursor now starts at "everything already
- *    there", pending requests that were never posted (bot down, previous
- *    cursor bug, channel error) are picked up separately: every pending row
- *    with no entry in bot_request_messages is posted once at boot.
+ *  - RESTART = CLEAN SLATE. Because the cursor starts at "everything already
+ *    there", requests that were already pending when the bot (re)started are
+ *    NOT posted again — only requests created or updated after startup are.
+ *    (A previous version had a startup catch-up that re-posted them; removed
+ *    on purpose so a restart never floods the channels with old requests.)
  *
  *  - NO SILENT LOSS. A missing/uncached channel used to be reported as
  *    "delivered" (so the request vanished for good). The channel is now
@@ -64,7 +65,7 @@
 
 import { ButtonBuilder, ButtonStyle, ActionRowBuilder, PermissionFlagsBits } from "discord.js";
 import { CONFIG, getChannelIdForOperator } from "./config.js";
-import { getPendingRequests, getCodeSubmittedRequests, getPollingSeed, getUnsentPendingRequests } from "./database.js";
+import { getPendingRequests, getCodeSubmittedRequests, getPollingSeed } from "./database.js";
 import { buildNewRequestEmbed, buildCodeSubmittedEmbed } from "./utils/embedBuilder.js";
 import { getClaimer } from "./utils/claimStore.js";
 import { rememberMessage } from "./utils/messageStore.js";
@@ -85,8 +86,6 @@ const ERROR_LOG_EVERY_MS   = 30_000;
 let lastPendingAt       = new Date(0);
 let lastCodeSubmittedAt = new Date(0);
 let cursorsReady        = false;
-/** True once every pending request without a Discord message has been posted. */
-let catchUpDone         = false;
 
 /**
  * Seeds both cursors from the newest updated_at already in snap_requests.
@@ -385,17 +384,6 @@ async function processRows(rows, kind, cursor, send) {
 // Both throw on a database failure — the tick handler owns logging/backoff.
 
 async function pollPending(client) {
-    // One-time catch-up: pending requests the bot never posted (no tracked
-    // Discord message). Repeats each tick only until all of them went out.
-    if (!catchUpDone) {
-        const missed = await getUnsentPendingRequests();
-        if (missed.length > 0) {
-            console.log(`📬 Catch-up: ${missed.length} pending request${missed.length === 1 ? "" : "s"} never posted to Discord — sending now`);
-            await processRows(missed, "pending", new Date(0), (row) => sendNewRequest(client, row));
-        }
-        catchUpDone = missed.every(r => delivered.has(rowKey("pending", r)));
-    }
-
     const rows = await getPendingRequests(lastPendingAt);
     if (rows.length === 0) return;
     lastPendingAt = await processRows(rows, "pending", lastPendingAt, (row) => sendNewRequest(client, row));

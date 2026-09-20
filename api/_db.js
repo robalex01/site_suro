@@ -9,20 +9,36 @@
  *   — or —
  *   DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME     (wins over DATABASE_URL)
  *
- * The URL is parsed by hand (see parseDbUrl) so a password containing @ # / ? :
- * works without URL-encoding it. DB_* is still the most foolproof option.
+ * ── WHY THERE IS NO CONNECTION POOL HERE (v3) ────────────────────────────────
+ * The error  "User … already has more than 'max_user_connections' active
+ * connections"  means the database account hit its cap on simultaneous
+ * connections (25 here) and every connection ever opened by the website AND
+ * the Discord bot counts against it.
  *
- * Every connection is switched to UTC (SET time_zone = '+00:00') so that
- * NOW() / CURRENT_TIMESTAMP defaults, and the JS Dates read back, always agree
- * — the Discord bot does the same, so both sides of the shared database see
- * identical timestamps.
+ * The old version kept a pool of up to 3 connections per serverless instance.
+ * On Vercel an instance is frozen between requests, so its pooled connections
+ * stay open on the DB server (MariaDB waits 8 HOURS by default before dropping
+ * an idle one) while new instances open their own. They pile up until the cap
+ * is hit and every request — including /api/status polled every 3 s by each
+ * visitor — fails with a 500.
+ *
+ * Now every query opens its own short-lived connection and ALWAYS closes it
+ * before returning, so nothing can linger on the server after a request.
+ * Around that:
+ *   - at most MAX_LOCAL_CONCURRENCY queries run at once per instance;
+ *   - if the server says "too many connections" the query is retried a few
+ *     times with a short jittered backoff instead of failing immediately;
+ *   - each connection gets `wait_timeout = 20` as a safety net, so even if a
+ *     close were ever lost the server drops it itself within seconds;
+ *   - every connection is switched to UTC (SET time_zone = '+00:00') so that
+ *     NOW() / CURRENT_TIMESTAMP defaults and the JS Dates read back agree.
  */
 
 // Named import on purpose: Vercel compiles these files ESM -> CommonJS, and a default
 // import of mysql2/promise only works when the compiler applies esModuleInterop.
-import { createPool } from 'mysql2/promise';
+import { createConnection } from 'mysql2/promise';
 
-let pool = null;
+// ─── Connection options ──────────────────────────────────────────────────────
 
 function safeDecode(s) {
   try { return decodeURIComponent(s); } catch { return s; }
@@ -85,48 +101,124 @@ function buildOptions() {
 
   return {
     ...base,
-    charset:               'utf8mb4',
-    waitForConnections:    true,
-    connectionLimit:       3,       // serverless: many instances, keep each one small
-    queueLimit:            0,
-    connectTimeout:        8000,
-    enableKeepAlive:       true,
-    keepAliveInitialDelay: 10000,
-    timezone:              'Z',
+    charset:        'utf8mb4',
+    connectTimeout: 8000,
+    timezone:       'Z',
   };
 }
 
-function getPool() {
-  if (!pool) {
-    pool = createPool(buildOptions());
-    // Queued before any caller's query on that connection, so it always runs first.
-    pool.pool.on('connection', (conn) => {
-      conn.query("SET time_zone = '+00:00'", () => {});
-    });
-  }
-  return pool;
+let cachedOptions = null;
+function getOptions() {
+  if (!cachedOptions) cachedOptions = buildOptions();
+  return cachedOptions;
 }
 
-// A pooled connection that sat idle while the function was frozen can be dead
-// by the time it is reused — retry once on a fresh one.
-const TRANSIENT = /PROTOCOL_CONNECTION_LOST|ECONNRESET|EPIPE|ETIMEDOUT|closed state|Connection lost/i;
+// ─── Error classification ────────────────────────────────────────────────────
+
+/** ER_USER_LIMIT_REACHED (1226) / ER_CON_COUNT_ERROR (1040): the server has no free connection slot right now. */
+export function isBusyError(e) {
+  if (e?.errno === 1226 || e?.errno === 1040) return true;
+  return /ER_USER_LIMIT_REACHED|max_user_connections|ER_CON_COUNT_ERROR|Too many connections/i
+    .test(`${e?.code || ''} ${e?.message || ''}`);
+}
+
+const TRANSIENT = /PROTOCOL_CONNECTION_LOST|ECONNRESET|EPIPE|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|closed state|Connection lost|Connect Timeout/i;
+
+function isRetryable(e) {
+  return isBusyError(e) || TRANSIENT.test(`${e?.code || ''} ${e?.message || ''}`);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Per-instance concurrency gate ───────────────────────────────────────────
+
+const MAX_LOCAL_CONCURRENCY = 3;
+let active = 0;
+const waiters = [];
+
+async function acquireSlot() {
+  if (active < MAX_LOCAL_CONCURRENCY) { active++; return; }
+  await new Promise(resolve => waiters.push(resolve)); // slot is handed over directly, `active` unchanged
+}
+
+function releaseSlot() {
+  const next = waiters.shift();
+  if (next) next(); else active--;
+}
+
+// ─── Query execution ─────────────────────────────────────────────────────────
+
+async function closeConnection(conn) {
+  try {
+    await Promise.race([conn.end(), sleep(1000).then(() => { throw new Error('end timeout'); })]);
+  } catch {
+    try { conn.destroy(); } catch { /* already gone */ }
+  }
+}
+
+async function runOnce(text, params) {
+  await acquireSlot();
+  let conn;
+  try {
+    conn = await createConnection(getOptions());
+    // One round trip: UTC session + a short idle timeout as a safety net.
+    await conn.query("SET time_zone = '+00:00', wait_timeout = 20");
+    const [result] = await conn.query(text, params);
+    return result;
+  } finally {
+    if (conn) await closeConnection(conn);
+    releaseSlot();
+  }
+}
+
+const MAX_ATTEMPTS = 5;
 
 /**
  * query('SELECT ... WHERE a = ?', [x])
  * SELECT → array of rows. INSERT/UPDATE/DELETE → { affectedRows, insertId, ... }.
+ *
+ * Retries only connection-level failures (server busy, reset, timeout). A real
+ * SQL error is thrown immediately. Every statement in this app is either a read
+ * or an idempotent/guarded write, so retrying after a lost response is safe.
  */
 export async function query(text, params = []) {
-  for (let attempt = 0; ; attempt++) {
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      const [result] = await getPool().query(text, params);
-      return result;
+      return await runOnce(text, params);
     } catch (e) {
-      if (attempt >= 1 || !TRANSIENT.test(`${e.code || ''} ${e.message || ''}`)) throw e;
+      lastErr = e;
+      if (!isRetryable(e) || attempt === MAX_ATTEMPTS - 1) break;
+      const base = isBusyError(e) ? 250 : 100;
+      await sleep(base * (attempt + 1) + Math.random() * 150);
     }
   }
+  throw lastErr;
 }
 
 /** Tagged template: sql`SELECT * FROM t WHERE a = ${x}` — values become ? placeholders. */
 export function sql(strings, ...values) {
   return query(strings.join('?'), values);
+}
+
+// ─── Error responses ─────────────────────────────────────────────────────────
+
+/**
+ * Standard failure response for a route's catch block. The real error goes to
+ * the server logs only — it used to be sent to the browser, which leaked the
+ * database account name ("User u718de371_… already has more than…").
+ * A saturated database is a 503 (clients treat it as "try again shortly"),
+ * anything else a 500.
+ */
+export function fail(res, e, context = 'API') {
+  console.error(`${context} error:`, e);
+  if (isBusyError(e)) {
+    res.setHeader('Retry-After', '2');
+    return res.status(503).json({
+      success: false,
+      busy:    true,
+      message: 'Service momentanément saturé, veuillez réessayer dans quelques secondes.',
+    });
+  }
+  return res.status(500).json({ success: false, message: 'Erreur serveur' });
 }

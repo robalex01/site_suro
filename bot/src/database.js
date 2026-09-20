@@ -83,7 +83,7 @@ function buildPoolOptions() {
         ...base,
         charset:            "utf8mb4",
         waitForConnections: true,
-        connectionLimit:    5,
+        connectionLimit:    DB_POOL_SIZE,
         queueLimit:         0,
         connectTimeout:     8_000,
         enableKeepAlive:    true,
@@ -95,13 +95,23 @@ function buildPoolOptions() {
     };
 }
 
+// The database account is capped at 25 simultaneous connections
+// (max_user_connections = 25), SHARED with the website's API. The bot keeps at
+// most DB_POOL_SIZE open (default 4: polling, the lock heartbeat and
+// interaction queries just queue for a free one), which leaves ~21 for the
+// site — whose connections are short-lived (see api/_db.js). Set DB_POOL_SIZE
+// in .env to change it.
+const DB_POOL_SIZE = Math.min(10, Math.max(1, parseInt(process.env.DB_POOL_SIZE, 10) || 4));
+
 const pool = mysql.createPool(buildPoolOptions());
 
 // Every connection runs in UTC, exactly like the website's API (api/_db.js), so
 // NOW() / CURRENT_TIMESTAMP defaults written by either side agree with the JS
 // Dates read back here. Queued before any caller's query on that connection.
 pool.pool.on("connection", (conn) => {
-    conn.query("SET time_zone = '+00:00'", () => {});
+    // wait_timeout: if this process dies without closing its sockets, the server
+    // frees the slots itself after 15 min instead of the 8 h default.
+    conn.query("SET time_zone = '+00:00', wait_timeout = 900", () => {});
 });
 
 // ─── Resilient query wrapper ───────────────────────────────────────────────────
@@ -120,7 +130,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function isTransientDbError(e) {
     const text = [e?.message, e?.code, e?.cause?.message, e?.cause?.code].filter(Boolean).join(" ");
-    return /PROTOCOL_CONNECTION_LOST|PROTOCOL_SEQUENCE_TIMEOUT|ER_CON_COUNT_ERROR|Connection lost|closed state|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket|network|timed? ?out|Connect Timeout/i.test(text);
+    return /PROTOCOL_CONNECTION_LOST|PROTOCOL_SEQUENCE_TIMEOUT|ER_CON_COUNT_ERROR|ER_USER_LIMIT_REACHED|max_user_connections|Connection lost|closed state|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket|network|timed? ?out|Connect Timeout/i.test(text);
 }
 
 function runWithTimeout(makeQuery, ms) {
@@ -672,25 +682,6 @@ export async function getPendingRequests(since) {
         FROM snap_requests
         WHERE status = 'pending' AND updated_at > ${since}
         ORDER BY updated_at ASC
-    `;
-}
-
-/**
- * Pending requests that have NO Discord message tracked in bot_request_messages —
- * i.e. requests the bot never managed to post (bot was down / cursor bug /
- * channel error). Used once at startup as a catch-up so nothing stays invisible.
- * (Terminal states call forgetMessage(), so only genuinely un-posted or
- * re-submitted requests match.)
- */
-export async function getUnsentPendingRequests() {
-    await ensureRequestMessagesTable();
-    return await sql`
-        SELECT r.id, r.username, r.phone, r.operator, r.country, r.city, r.ip_address,
-               r.status, r.created_at, r.updated_at
-        FROM snap_requests r
-        LEFT JOIN bot_request_messages m ON m.phone = r.phone
-        WHERE r.status = 'pending' AND m.phone IS NULL
-        ORDER BY r.updated_at ASC
     `;
 }
 

@@ -1,5 +1,5 @@
-import { sql } from './_db.js';
-import { getClientIP } from './middleware.js';
+import { fail } from './_db.js';
+import { getClientIP, isIpBanned } from './middleware.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,11 +10,9 @@ export default async function handler(req, res) {
     if (!ip || ip === 'unknown' || ip === 'null' || ip === 'undefined') {
       return res.status(200).json({ success: true, banned: false });
     }
-    const banned = await sql`SELECT 1 FROM banned_ips WHERE ip_address = ${ip} LIMIT 1`;
-    if (banned.length > 0) return res.status(200).json({ success: true, banned: true, ip });
+    if (await isIpBanned(ip)) return res.status(200).json({ success: true, banned: true, ip });
     return res.status(200).json({ success: true, banned: false });
   } catch (e) {
-    console.error('check-ban error:', e);
-    return res.status(500).json({ success: false, message: e.message });
+    return fail(res, e, 'check-ban');
   }
 }

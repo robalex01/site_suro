@@ -9,7 +9,7 @@
  *       every one of these UPDATEs changes `status`, so changed rows == matched.)
  */
 
-import { sql }           from "./_db.js";
+import { sql, fail }     from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
 
 const STALE_MESSAGE = "Cette demande n'est plus dans l'état attendu (déjà traitée ou réinitialisée).";
@@ -132,7 +132,6 @@ export default async function handler(req, res) {
 
         return res.status(400).json({ success: false, message: "Action inconnue" });
     } catch (e) {
-        console.error("staff-action error:", e);
-        return res.status(500).json({ success: false, message: e.message });
+        return fail(res, e, "staff-action");
     }
 }

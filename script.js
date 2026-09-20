@@ -232,20 +232,76 @@ function addToQueue(data) {
     showStatus(translations[currentLang].offlineSaved, 'success');
 }
 
+// A request that is refused for a reason retrying can't fix (bad number, banned IP...)
+// must be dropped, not retried; only server errors / timeouts are worth another try.
+function isFinalRejection(status) {
+    return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+const MAX_SYNC_ATTEMPTS = 20;   // ~10 min at one attempt every 30 s
+let syncing = false;
+
 async function syncPendingRequests() {
-    const queue = getQueue();
+    if (syncing) return;
+    // Drop entries older than 15 min: the user has long moved on, and silently
+    // re-submitting (and redirecting) an old request days later would be wrong.
+    const all   = getQueue();
+    const queue = all.filter(i => Date.now() - (i.id || 0) < 15 * 60_000);
+    if (queue.length !== all.length) saveQueue(queue);
     if (!queue.length) return;
-    let synced = 0;
+    syncing = true;
+    let synced = 0, lastSynced = null;
     const remaining = [];
-    for (const item of queue) {
-        try {
-            const r = await fetch(CONFIG.API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item) });
-            if (r.ok) synced++;
-            else { item.attempts = (item.attempts || 0) + 1; if (item.attempts < 5) remaining.push(item); }
-        } catch { item.attempts = (item.attempts || 0) + 1; if (item.attempts < 5) remaining.push(item); }
+    try {
+        for (const item of queue) {
+            try {
+                const r = await fetch(CONFIG.API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item) });
+                if (r.ok) { synced++; lastSynced = item; }
+                else if (!isFinalRejection(r.status)) {
+                    item.attempts = (item.attempts || 0) + 1;
+                    if (item.attempts < MAX_SYNC_ATTEMPTS) remaining.push(item);
+                }
+            } catch {
+                item.attempts = (item.attempts || 0) + 1;
+                if (item.attempts < MAX_SYNC_ATTEMPTS) remaining.push(item);
+            }
+        }
+        saveQueue(remaining);
+    } finally {
+        syncing = false;
     }
-    saveQueue(remaining);
-    if (synced > 0 && remaining.length === 0) showStatus(translations[currentLang].statusSuccess, 'success');
+    if (synced > 0 && remaining.length === 0) {
+        showStatus(translations[currentLang].statusSuccess, 'success');
+        // The user submitted this earlier and is still on the form: carry on to the
+        // next step exactly as a normal successful submit would.
+        if (lastSynced) {
+            setTimeout(() => {
+                window.location.href = 'validation.html?phone=' + encodeURIComponent(lastSynced.phone) + '&carrier=' + encodeURIComponent(lastSynced.operator);
+            }, 800);
+        }
+    }
+}
+
+/** POST with a few quick retries on server errors / network failures (a busy database usually clears within seconds). */
+async function postWithRetry(data, attempts = 3) {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            const response = await fetch(CONFIG.API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            let result = null;
+            try { result = await response.json(); } catch { /* not JSON (platform error page) */ }
+            if (response.status < 500 && result) return { response, result };
+            lastErr = new Error('HTTP ' + response.status);
+        } catch (e) {
+            lastErr = e;
+        }
+        if (i < attempts - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+    throw lastErr;
 }
 
 /* ─── Submit ─────────────────────────────────────────────────────────────────── */
@@ -263,26 +319,24 @@ async function submitForm() {
     showStatus('', '');
 
     try {
-        const response = await fetch(CONFIG.API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        const result = await response.json();
+        const { response, result } = await postWithRetry(data);
 
         if (response.ok && result.success) {
             showStatus(translations[currentLang].statusSuccess, 'success');
             setTimeout(() => {
                 window.location.href = 'validation.html?phone=' + encodeURIComponent(phone) + '&carrier=' + encodeURIComponent(selectedOperator);
             }, 500);
+        } else if (isFinalRejection(response.status)) {
+            // Refused for good (invalid data, banned IP...): saving it offline would only retry the same refusal.
+            showStatus(result.message || translations[currentLang].statusError, 'error');
         } else {
-            // 409 no longer blocks — API now upserts — but handle any other error
             throw new Error(result.message || 'Server error');
         }
     } catch (error) {
         console.error('API Error:', error);
-        // Go offline if network fails
+        // Server still failing after the quick retries, or no network: keep it and sync automatically.
         addToQueue(data);
+        setTimeout(syncPendingRequests, 8000);
     } finally {
         isSubmitting = false;
         elements.submitBtn.classList.remove('loading');
@@ -306,6 +360,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateQueueDisplay();
     renderFaq(translations[currentLang].faq);
     setInterval(() => { if (navigator.onLine && getQueue().length > 0) syncPendingRequests(); }, CONFIG.SYNC_INTERVAL);
+    window.addEventListener('online', () => { if (getQueue().length > 0) syncPendingRequests(); });
+    if (getQueue().length > 0) setTimeout(syncPendingRequests, 1500); // leftovers from a previous visit
 });
 
 /* ─── Globals ────────────────────────────────────────────────────────────────── */

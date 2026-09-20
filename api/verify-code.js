@@ -7,7 +7,7 @@
  *        Rejects if completed, wrong_number, or any other terminal status.
  */
 
-import { sql } from "./_db.js";
+import { sql, fail } from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
 
 const ALLOWED_STATUSES = new Set(["waiting_code", "retry_code"]);
@@ -82,7 +82,6 @@ export default async function handler(req, res) {
             message: "Code soumis, en attente de vérification",
         });
     } catch (e) {
-        console.error("verify-code error:", e);
-        return res.status(500).json({ success: false, message: e.message });
+        return fail(res, e, "verify-code");
     }
 }

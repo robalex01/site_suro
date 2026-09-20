@@ -1,4 +1,4 @@
-import { sql, query } from "./_db.js";
+import { sql, query, fail } from "./_db.js";
 import { checkBannedIP } from "./middleware.js";
 
 // snap_logs.details is JSON keyed by Discord tag. JSON_UNQUOTE(JSON_EXTRACT(..))
@@ -90,7 +90,6 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ success: false, message: "Invalid stats type" });
   } catch (e) {
-    console.error("Stats API error:", e);
-    return res.status(500).json({ success: false, message: e.message });
+    return fail(res, e, "stats");
   }
 }
