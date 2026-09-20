@@ -15,7 +15,9 @@
  * identical timestamps.
  */
 
-import mysql from 'mysql2/promise';
+// Named import on purpose: Vercel compiles these files ESM -> CommonJS, and a default
+// import of mysql2/promise only works when the compiler applies esModuleInterop.
+import { createPool } from 'mysql2/promise';
 
 let pool = null;
 
@@ -65,7 +67,7 @@ function buildOptions() {
 
 function getPool() {
   if (!pool) {
-    pool = mysql.createPool(buildOptions());
+    pool = createPool(buildOptions());
     // Queued before any caller's query on that connection, so it always runs first.
     pool.pool.on('connection', (conn) => {
       conn.query("SET time_zone = '+00:00'", () => {});
