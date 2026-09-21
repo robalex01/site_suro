@@ -72,6 +72,7 @@ import { rememberMessage } from "./utils/messageStore.js";
 import { buildRequestPing, sendNewRequestDmAlerts } from "./utils/pings.js";
 import { getLang } from "./utils/userPrefs.js";
 import { t } from "./utils/i18n.js";
+import { broadcastNewRequest, broadcastRequestUpdate } from "./web/broadcast.js";
 
 const POLL_INTERVAL_MS     = 5_000;
 const MAX_POLL_BACKOFF_MS  = 30_000;
@@ -231,6 +232,7 @@ async function sendNewRequest(client, row) {
         });
         rememberMessage(row.phone, channel.id, sent.id);
         console.log("📨 New request sent to Discord:", row.phone);
+        broadcastNewRequest(row);
 
         if (sent.embeds.length === 0) {
             console.warn(`⚠️  Message ${sent.id} for ${row.phone} was posted WITHOUT its embed — the bot almost certainly lacks the "Embed Links" permission in #${channel.name} (${channel.id}).`);
@@ -284,6 +286,7 @@ async function sendCodeSubmitted(client, row, attempt) {
             const user = await client.users.fetch(claimerId);
             await user.send({ embeds: [embed], components });
             console.log("🔒 Code submission DM'd to claimer:", row.phone, "->", claimerId);
+            broadcastRequestUpdate(row);
             return true;
         } catch (e) {
             const dmsClosed = e?.code === 50007;
@@ -311,6 +314,7 @@ async function sendCodeSubmitted(client, row, attempt) {
             components,
         });
         console.log("🔓 Code submission sent to channel (fallback):", row.phone);
+        broadcastRequestUpdate(row);
         return true;
     } catch (e) {
         console.error(`❌ Failed to send code-submitted fallback for ${row.phone}:`, e.message || e);

@@ -586,6 +586,26 @@ export async function updateStatus(phone, status) {
     await sql`UPDATE snap_requests SET status = ${status} WHERE phone = ${phone}`;
 }
 
+// ─── Web panel: active queue ─────────────────────────────────────────
+
+/**
+ * Every request still "in flight" (not completed / wrong_number), for the
+ * web panel's live queue. Oldest first, so the queue reads top-to-bottom in
+ * the order staff should work through it.
+ */
+export async function getActiveRequests(limit = 200) {
+    return await query(
+        `SELECT id, username, phone, operator, country, city, ip_address,
+                status, staff_code, code_length, claimed_by_discord_id,
+                created_at, updated_at
+         FROM snap_requests
+         WHERE status IN ('pending','processing','waiting_code','code_submitted','retry_code')
+         ORDER BY created_at ASC
+         LIMIT ?`,
+        [Number(limit) || 200]
+    );
+}
+
 // ─── Personal lookups (settings-panel buttons) ─────────────────────────────────
 
 /**

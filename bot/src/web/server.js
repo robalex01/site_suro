@@ -31,12 +31,18 @@
  */
 
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import express from "express";
 import session from "express-session";
 import { Server as SocketIOServer } from "socket.io";
 import { CONFIG } from "../config.js";
 import { isStaff, isOwner } from "../utils/permissions.js";
+import { createApiRouter } from "./api.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, "public");
 
 let io = null;
 
@@ -125,12 +131,16 @@ async function resolvePermissionLevel(client, discordUserId) {
 // ─── App factory ─────────────────────────────────────────────────────────────
 
 function requireStaff(req, res, next) {
+    // req.path is relative to the mount point ("/requests", not
+    // "/api/requests") since this runs as part of the app.use("/api", ...)
+    // stack — req.originalUrl always keeps the full path regardless of mounting.
+    const isApi = req.originalUrl.startsWith("/api/");
     if (!req.session.user) {
-        if (req.path.startsWith("/api/")) return res.status(401).json({ error: "not_authenticated" });
+        if (isApi) return res.status(401).json({ error: "not_authenticated" });
         return res.redirect("/login");
     }
     if (!req.session.user.staff) {
-        if (req.path.startsWith("/api/")) return res.status(403).json({ error: "not_staff" });
+        if (isApi) return res.status(403).json({ error: "not_staff" });
         return res.status(403).send(renderPage("Access denied", `
             <p>Your Discord account (<strong>${escapeHtml(req.session.user.username)}</strong>) doesn't have staff access on this server.</p>
             <p><a href="/logout">Log out</a></p>
@@ -182,6 +192,49 @@ function renderPage(title, bodyHtml) {
 </html>`;
 }
 
+function renderDashboard(user) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Snaptech Staff Panel</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+    <div class="brand">📱 Snaptech Staff Panel</div>
+    <div class="who">
+        <span id="conn">Connecting…</span>
+        ${user.avatar ? `<img class="avatar" src="${user.avatar}" alt="">` : ""}
+        <span>${escapeHtml(user.username)}</span>
+        <span class="badge-role ${user.owner ? "badge-owner" : "badge-staff"}">${user.owner ? "Owner" : "Staff"}</span>
+        <a href="/logout">Log out</a>
+    </div>
+</header>
+<main>
+    <div class="section-title">📋 Unclaimed</div>
+    <div class="queue" id="col-pending"></div>
+
+    <div class="section-title">🔧 In Progress — choose a length</div>
+    <div class="queue" id="col-active"></div>
+
+    <div class="section-title">⏳ Awaiting Code</div>
+    <div class="queue" id="col-waiting"></div>
+
+    <div class="section-title">🔓 Code Submitted — validate or reject</div>
+    <div class="queue" id="col-submitted"></div>
+
+    <div class="section-title">🏆 Leaderboard — validations</div>
+    <ul class="leaderboard" id="leaderboard"></ul>
+</main>
+<div id="toasts"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>`;
+}
+
 export function startWebPanel(client) {
     if (!CONFIG.WEB_ENABLED) {
         console.log("ℹ️  Web panel disabled (WEB_ENABLED=0) — skipping.");
@@ -216,6 +269,8 @@ export function startWebPanel(client) {
     });
     app.use(sessionMiddleware);
     app.use(express.json());
+    app.use("/static", express.static(PUBLIC_DIR));
+    app.use("/api", requireStaff, createApiRouter(client));
 
     // ── Auth routes ──────────────────────────────────────────────────────────
 
@@ -274,7 +329,7 @@ export function startWebPanel(client) {
         req.session.destroy(() => res.redirect("/"));
     });
 
-    // ── Dashboard shell (Étape 1: placeholder — real content lands in the next steps) ──
+    // ── Dashboard ──
 
     app.get("/", (req, res) => {
         if (!req.session.user) {
@@ -289,19 +344,7 @@ export function startWebPanel(client) {
                 <a href="/logout">Log out</a>
             `));
         }
-        res.send(renderPage("Dashboard", `
-            <p>Signed in as <strong>${escapeHtml(req.session.user.username)}</strong>
-               ${req.session.user.owner ? " · <span style=\"color:#f59e0b\">Owner</span>" : " · <span style=\"color:#3b82f6\">Staff</span>"}</p>
-            <p id="status" style="color:#9ca3af">Connecting…</p>
-            <p style="margin-top:24px;"><a href="/logout">Log out</a></p>
-            <script src="/socket.io/socket.io.js"></script>
-            <script>
-                const socket = io();
-                const status = document.getElementById("status");
-                socket.on("connect", () => { status.textContent = "🟢 Live connection established."; status.style.color = "#10b981"; });
-                socket.on("disconnect", () => { status.textContent = "🔴 Disconnected — retrying…"; status.style.color = "#ef4444"; });
-            </script>
-        `));
+        res.send(renderDashboard(req.session.user));
     });
 
     // ── HTTP + Socket.IO ─────────────────────────────────────────────────────
@@ -313,9 +356,13 @@ export function startWebPanel(client) {
 
     // Shares the exact same session as the HTTP side — a socket is only ever
     // authenticated because the browser's existing login cookie says so, not
-    // via any separate token.
-    const wrapMiddleware = (middleware) => (socket, next) => middleware(socket.request, {}, next);
-    io.engine.use(wrapMiddleware(sessionMiddleware));
+    // via any separate token. Since Socket.IO 4.6, io.engine.use() calls the
+    // middleware with the real (req, res, next) from the underlying HTTP
+    // handshake — sessionMiddleware can be passed straight through, no
+    // wrapping needed (wrapping it, as an earlier version of this file did,
+    // passed the wrong arguments and crashed express-session on every
+    // connection attempt).
+    io.engine.use(sessionMiddleware);
     io.use((socket, next) => {
         const user = socket.request.session?.user;
         if (!user || !user.staff) return next(new Error("unauthorized"));

