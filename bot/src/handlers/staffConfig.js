@@ -39,13 +39,14 @@ import { CONFIG, OPERATOR_GROUPS } from "../config.js";
 import {
     getStaticMessage, setStaticMessage,
     getStaffPrefs, upsertStaffPrefs, resetStaffPrefs,
-    getActiveClaims, getPersonalStats, getRecentActions,
+    getActiveClaims, getPersonalStats, getRecentActions, getStaffLeaderboard,
 } from "../database.js";
 import { isStaff } from "../utils/permissions.js";
 import { t } from "../utils/i18n.js";
 import { getPrefs, primePrefs, forgetPrefs, peekLang } from "../utils/userPrefs.js";
 import { invalidatePingCache } from "../utils/pings.js";
 import { formatPhone } from "../utils/formatters.js";
+import { buildRankEmbed } from "../utils/embedBuilder.js";
 
 // ACKNOWLEDGE FIRST, THEN HIT THE DATABASE.
 //
@@ -265,6 +266,8 @@ function buildPersonalComponents(prefs) {
         new ButtonBuilder().setCustomId("cfgclaims").setLabel(t(lang, "settings_btn_claims")).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("cfgstats").setLabel(t(lang, "settings_btn_stats")).setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId("cfghistory").setLabel(t(lang, "settings_btn_history")).setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("cfgrank").setLabel(t(lang, "settings_btn_rank")).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("cfgtestalert").setLabel(t(lang, "settings_btn_testalert")).setStyle(ButtonStyle.Secondary),
     );
 
     // 5 rows — Discord's per-message maximum. Any further control has to
@@ -471,7 +474,60 @@ async function handleShowHistory(interaction) {
     await safeEdit(interaction, { embeds: [embed], components: [buildBackRow(lang)] });
 }
 
-/** "Back" button on the claims/stats/history views — returns to the main panel. */
+/**
+ * "My rank" — where this staff member sits in the validations leaderboard,
+ * replaces the panel until "Back". Reuses the SAME full leaderboard query
+ * as /leaderboard (getStaffLeaderboard) rather than a separate DB query —
+ * a large limit (1000) is cheap for a staff team's realistic size and this
+ * way there is exactly one place that computes "the leaderboard".
+ */
+async function handleShowRank(interaction) {
+    if (!await safeAck(interaction, "update")) return;
+    const prefs = await getPrefs(interaction.user.id);
+    const lang  = prefs.language;
+
+    let rows = [];
+    try { rows = await getStaffLeaderboard(1000); }
+    catch (e) { console.warn("⚠️  Could not load leaderboard for rank:", e.message); }
+
+    const embed = buildRankEmbed(rows, interaction.user.tag, lang);
+    await safeEdit(interaction, { embeds: [embed], components: [buildBackRow(lang)] });
+}
+
+/**
+ * "Test DM alert" — sends this staff member a real DM using the exact same
+ * embed as a live new-request alert, so they can confirm their DMs are
+ * actually reachable (Discord error 50007 / closed DMs is the single most
+ * common reason someone silently never gets pinged, and previously the only
+ * way to notice was to wait for a real request and wonder why nothing came).
+ */
+async function handleTestAlert(interaction) {
+    if (!await safeAck(interaction, "update")) return;
+    const prefs = await getPrefs(interaction.user.id);
+    const lang  = prefs.language;
+
+    const embed = new EmbedBuilder()
+        .setTitle(t(lang, "dm_alert_title"))
+        .setColor(0x3b82f6)
+        .setDescription(t(lang, "dm_alert_desc", `<#${CONFIG.STAFF_CONFIG_CHANNEL_ID}>`))
+        .setTimestamp();
+
+    let sent = false;
+    try {
+        await interaction.user.send({ embeds: [embed] });
+        sent = true;
+    } catch (e) {
+        console.warn(`⚠️  Test alert failed for ${interaction.user.id}:`, e.message);
+    }
+
+    await safeEdit(interaction, {
+        content: t(lang, sent ? "testalert_sent" : "testalert_failed"),
+        embeds: [],
+        components: [buildBackRow(lang)],
+    });
+}
+
+/** "Back" button on the claims/stats/history/rank views — returns to the main panel. */
 async function handleBack(interaction) {
     if (!await safeAck(interaction, "update")) return;
     const prefs = await getPrefs(interaction.user.id);
@@ -497,6 +553,8 @@ export async function handleConfigButton(interaction) {
         if (action === "cfgclaims")  await handleShowClaims(interaction);
         if (action === "cfgstats")   await handleShowStats(interaction);
         if (action === "cfghistory") await handleShowHistory(interaction);
+        if (action === "cfgrank")      await handleShowRank(interaction);
+        if (action === "cfgtestalert") await handleTestAlert(interaction);
         if (action === "cfgback")    await handleBack(interaction);
     } catch (e) {
         console.error("Staff config button error:", e.message || e);

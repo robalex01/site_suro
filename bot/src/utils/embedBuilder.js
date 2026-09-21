@@ -284,6 +284,91 @@ export function buildStaffActivityEmbed(activityData, lang = "en") {
     return embed;
 }
 
+// ─── Staff detail (per-member, viewed via /staffstats) ──────────────────────
+
+const STAFFSTATS_ACTION_EMOJI_KEYS = {
+    claim:        "mystats_claims",
+    true_code:    "mystats_validations",
+    false_code:   "mystats_rejections",
+    wrong_number: "staffstats_wrong",
+    set_length:   "staffstats_setlength",
+    unclaim:      "staffstats_unclaim",
+};
+
+/**
+ * Detailed breakdown for ONE staff member — used by /staffstats. Combines
+ * the same per-action counts as the personal "My stats" panel plus a short
+ * recent-action history, but for whichever user the caller asked about
+ * rather than themselves.
+ */
+export function buildStaffDetailEmbed(targetUser, personalStats, recentActions, lang = "en") {
+    const counts = {};
+    (personalStats.byAction || []).forEach(r => { counts[r.action] = Number(r.count); });
+
+    const embed = new EmbedBuilder()
+        .setTitle(t(lang, "staffstats_title", targetUser.username))
+        .setColor(0x3b82f6)
+        .setThumbnail(targetUser.displayAvatarURL?.() || null)
+        .setFooter({ text: "📡 Snaptech" })
+        .setTimestamp();
+
+    const hasAny = Object.keys(counts).length > 0;
+    if (!hasAny) {
+        embed.setDescription(t(lang, "staffstats_none"));
+        return embed;
+    }
+
+    embed.addFields(
+        Object.entries(STAFFSTATS_ACTION_EMOJI_KEYS).map(([action, key]) => ({
+            name:   t(lang, key),
+            value:  "`" + (counts[action] || 0) + "`",
+            inline: true,
+        }))
+    );
+    embed.addFields({ name: t(lang, "mystats_today"), value: "`" + (personalStats.today || 0) + "`", inline: true });
+
+    const recentLines = (recentActions || []).length
+        ? recentActions.map(r => {
+              const label = t(lang, `hist_action_${r.action}`) || r.action;
+              const phone = r.details?.phone ? ` ${formatPhone(r.details.phone)}` : "";
+              const ts    = Math.floor(new Date(r.created_at).getTime() / 1000);
+              return `${label}${phone}  ·  <t:${ts}:R>`;
+          }).join("\n")
+        : t(lang, "staffstats_recent_none");
+
+    embed.addFields({ name: t(lang, "staffstats_recent_title"), value: recentLines, inline: false });
+
+    return embed;
+}
+
+// ─── Rank (leaderboard position for one staff member) ────────────────────────
+
+/**
+ * Where this staff member sits in the validations leaderboard. `rows` is the
+ * full (unlimited) leaderboard from getStaffLeaderboard, already sorted by
+ * validations descending; `staffTag` is matched against row.staff.
+ */
+export function buildRankEmbed(rows, staffTag, lang = "en") {
+    const embed = new EmbedBuilder()
+        .setTitle(t(lang, "rank_title"))
+        .setColor(0xf59e0b)
+        .setFooter({ text: "🏅 Snaptech" })
+        .setTimestamp();
+
+    const index = rows.findIndex(r => r.staff === staffTag);
+    if (index === -1) {
+        embed.setDescription(t(lang, "rank_none"));
+        return embed;
+    }
+
+    const rank        = index + 1;
+    const validations  = Number(rows[index].validations) || 0;
+    const bar          = progressBar(validations, Number(rows[0]?.validations) || 1, 12);
+
+    embed.setDescription(`${t(lang, "rank_line", rank, rows.length, validations)}\n\`${bar}\``);
+    return embed;
+}
+
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function buildPanelEmbed() {

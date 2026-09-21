@@ -101,6 +101,8 @@ const STRINGS = {
         settings_btn_claims:  "📋 My active claims",
         settings_btn_stats:   "📊 My stats",
         settings_btn_history: "🕒 My history",
+        settings_btn_rank:      "🏅 My rank",
+        settings_btn_testalert: "🔔 Test DM alert",
 
         claims_title: "📋 My active claims",
         claims_none:  "*You have no active claims right now.*",
@@ -115,6 +117,21 @@ const STRINGS = {
 
         history_title: "🕒 My recent actions",
         history_none:  "*No recorded activity yet.*",
+
+        rank_title: "🏅 My Rank",
+        rank_line:  (rank, total, validations) => `You are **#${rank}** of ${total} staff, with \`${validations}\` validated code${validations === 1 ? "" : "s"}.`,
+        rank_none:  "*No validations recorded yet — validate a code to appear on the leaderboard.*",
+
+        testalert_sent:   "✅ Test alert sent — check your DMs!",
+        testalert_failed: "❌ Could not DM you — check your Discord privacy settings (allow DMs from server members) and try again.",
+
+        staffstats_title:        (username) => `📊 Stats — ${username}`,
+        staffstats_none:         "*No recorded activity yet.*",
+        staffstats_wrong:        "❌ Wrong numbers",
+        staffstats_setlength:    "🔢 Set length",
+        staffstats_unclaim:      "↩️ Unclaims",
+        staffstats_recent_title: "🕒 Recent actions",
+        staffstats_recent_none:  "*No recent actions.*",
         hist_action_claim:        "📋 Claimed",
         hist_action_unclaim:      "↩️ Unclaimed",
         hist_action_set_length:   "🔢 Set code length",
@@ -272,6 +289,8 @@ const STRINGS = {
         settings_btn_claims:  "📋 Mes claims en cours",
         settings_btn_stats:   "📊 Mes stats",
         settings_btn_history: "🕒 Mon historique",
+        settings_btn_rank:      "🏅 Mon classement",
+        settings_btn_testalert: "🔔 Tester l'alerte MP",
 
         claims_title: "📋 Mes claims en cours",
         claims_none:  "*Tu n'as aucun claim en cours actuellement.*",
@@ -286,6 +305,21 @@ const STRINGS = {
 
         history_title: "🕒 Mes dernières actions",
         history_none:  "*Aucune activité enregistrée pour le moment.*",
+
+        rank_title: "🏅 Mon classement",
+        rank_line:  (rank, total, validations) => `Tu es **#${rank}** sur ${total} membres du staff, avec \`${validations}\` code${validations === 1 ? "" : "s"} validé${validations === 1 ? "" : "s"}.`,
+        rank_none:  "*Aucune validation enregistrée pour le moment — valide un code pour apparaître au classement.*",
+
+        testalert_sent:   "✅ Alerte de test envoyée — vérifie tes MP !",
+        testalert_failed: "❌ Impossible de t'envoyer un MP — vérifie tes réglages de confidentialité Discord (autoriser les MP des membres du serveur) et réessaie.",
+
+        staffstats_title:        (username) => `📊 Stats — ${username}`,
+        staffstats_none:         "*Aucune activité enregistrée pour le moment.*",
+        staffstats_wrong:        "❌ Mauvais numéros",
+        staffstats_setlength:    "🔢 Longueurs définies",
+        staffstats_unclaim:      "↩️ Libérations",
+        staffstats_recent_title: "🕒 Actions récentes",
+        staffstats_recent_none:  "*Aucune action récente.*",
         hist_action_claim:        "📋 Pris en charge",
         hist_action_unclaim:      "↩️ Libéré",
         hist_action_set_length:   "🔢 Longueur de code définie",
@@ -442,6 +476,8 @@ const STRINGS = {
         settings_btn_claims:  "📋 Moje aktywne zgłoszenia",
         settings_btn_stats:   "📊 Moje statystyki",
         settings_btn_history: "🕒 Moja historia",
+        settings_btn_rank:      "🏅 Moja pozycja",
+        settings_btn_testalert: "🔔 Testuj alert DM",
 
         claims_title: "📋 Moje aktywne zgłoszenia",
         claims_none:  "*Nie masz obecnie żadnych aktywnych zgłoszeń.*",
@@ -456,6 +492,21 @@ const STRINGS = {
 
         history_title: "🕒 Moje ostatnie akcje",
         history_none:  "*Brak zapisanej aktywności.*",
+
+        rank_title: "🏅 Moja pozycja",
+        rank_line:  (rank, total, validations) => `Jesteś **#${rank}** z ${total} osób w obsłudze, z \`${validations}\` zweryfikowanymi kodami.`,
+        rank_none:  "*Brak zapisanych weryfikacji — zweryfikuj kod, aby pojawić się w rankingu.*",
+
+        testalert_sent:   "✅ Wysłano alert testowy — sprawdź swoje DM!",
+        testalert_failed: "❌ Nie można wysłać Ci DM — sprawdź ustawienia prywatności Discord (zezwalaj na DM od członków serwera) i spróbuj ponownie.",
+
+        staffstats_title:        (username) => `📊 Statystyki — ${username}`,
+        staffstats_none:         "*Brak zapisanej aktywności.*",
+        staffstats_wrong:        "❌ Złe numery",
+        staffstats_setlength:    "🔢 Ustawione długości",
+        staffstats_unclaim:      "↩️ Zwolnienia",
+        staffstats_recent_title: "🕒 Ostatnie akcje",
+        staffstats_recent_none:  "*Brak ostatnich akcji.*",
         hist_action_claim:        "📋 Przejęto",
         hist_action_unclaim:      "↩️ Zwolniono",
         hist_action_set_length:   "🔢 Ustawiono długość kodu",
@@ -612,6 +663,8 @@ const STRINGS = {
         settings_btn_claims:  "📋 Mis solicitudes activas",
         settings_btn_stats:   "📊 Mis estadísticas",
         settings_btn_history: "🕒 Mi historial",
+        settings_btn_rank:      "🏅 Mi clasificación",
+        settings_btn_testalert: "🔔 Probar alerta MP",
 
         claims_title: "📋 Mis solicitudes activas",
         claims_none:  "*No tienes ninguna solicitud activa ahora mismo.*",
@@ -626,6 +679,21 @@ const STRINGS = {
 
         history_title: "🕒 Mis acciones recientes",
         history_none:  "*Aún no hay actividad registrada.*",
+
+        rank_title: "🏅 Mi clasificación",
+        rank_line:  (rank, total, validations) => `Estás en el puesto **#${rank}** de ${total} miembros del staff, con \`${validations}\` código(s) validado(s).`,
+        rank_none:  "*Aún no hay validaciones registradas — valida un código para aparecer en la clasificación.*",
+
+        testalert_sent:   "✅ Alerta de prueba enviada — ¡revisa tus MP!",
+        testalert_failed: "❌ No se pudo enviar el MP — revisa tu configuración de privacidad de Discord (permitir MP de miembros del servidor) e inténtalo de nuevo.",
+
+        staffstats_title:        (username) => `📊 Estadísticas — ${username}`,
+        staffstats_none:         "*Aún no hay actividad registrada.*",
+        staffstats_wrong:        "❌ Números incorrectos",
+        staffstats_setlength:    "🔢 Longitudes definidas",
+        staffstats_unclaim:      "↩️ Liberaciones",
+        staffstats_recent_title: "🕒 Acciones recientes",
+        staffstats_recent_none:  "*Sin acciones recientes.*",
         hist_action_claim:        "📋 Reclamada",
         hist_action_unclaim:      "↩️ Liberada",
         hist_action_set_length:   "🔢 Longitud de código definida",
@@ -788,6 +856,8 @@ const STRINGS = {
         settings_btn_claims:  "📋 طلباتي الجارية",
         settings_btn_stats:   "📊 إحصائياتي",
         settings_btn_history: "🕒 سجلّي",
+        settings_btn_rank:      "🏅 ترتيبي",
+        settings_btn_testalert: "🔔 اختبار تنبيه الرسائل الخاصة",
 
         claims_title: "📋 طلباتي الجارية",
         claims_none:  "*ليس لديك أي طلبات جارية حاليًا.*",
@@ -802,6 +872,21 @@ const STRINGS = {
 
         history_title: "🕒 آخر إجراءاتي",
         history_none:  "*لا يوجد نشاط مسجّل بعد.*",
+
+        rank_title: "🏅 ترتيبي",
+        rank_line:  (rank, total, validations) => `أنت في المركز **#${rank}** من أصل ${total} من الفريق، بـ \`${validations}\` رمز مقبول.`,
+        rank_none:  "*لا توجد عمليات قبول مسجّلة بعد — اقبل رمزًا لتظهر في قائمة الترتيب.*",
+
+        testalert_sent:   "✅ تم إرسال تنبيه تجريبي — تحقق من رسائلك الخاصة!",
+        testalert_failed: "❌ تعذّر إرسال رسالة خاصة إليك — تحقق من إعدادات الخصوصية في Discord (السماح بالرسائل الخاصة من أعضاء السيرفر) ثم أعد المحاولة.",
+
+        staffstats_title:        (username) => `📊 إحصائيات — ${username}`,
+        staffstats_none:         "*لا يوجد نشاط مسجّل بعد.*",
+        staffstats_wrong:        "❌ أرقام خاطئة",
+        staffstats_setlength:    "🔢 تحديد طول الرمز",
+        staffstats_unclaim:      "↩️ إلغاء استلام",
+        staffstats_recent_title: "🕒 آخر الإجراءات",
+        staffstats_recent_none:  "*لا يوجد نشاط حديث.*",
         hist_action_claim:        "📋 تم الاستلام",
         hist_action_unclaim:      "↩️ إلغاء الاستلام",
         hist_action_set_length:   "🔢 تحديد طول الرمز",

@@ -16,6 +16,7 @@ import { startDailySummarySchedule } from "./src/dailySummary.js";
 import { acquireInstanceLock, renewInstanceLock, releaseInstanceLock } from "./src/database.js";
 import { startPrefsRefresh, peekLang } from "./src/utils/userPrefs.js";
 import { t } from "./src/utils/i18n.js";
+import { startWebPanel } from "./src/web/server.js";
 
 // ─── Force IPv4 DNS resolution ──────────────────────────────────────────────
 //
@@ -245,6 +246,7 @@ client.once(Events.ClientReady, () => {
     startPolling(client);
     startDailySummarySchedule(client);
     postOrUpdateConfigPanel(client).catch(e => console.error("Staff settings panel error:", e));
+    startWebPanel(client);
 
     // If the gateway connection itself is unhealthy (frequent reconnects,
     // high ping), interactions arrive to our handler already several
@@ -277,6 +279,7 @@ client.on("warn",              (info)      => console.warn("⚠️  discord.js w
 const CONFIG_BUTTON_ACTIONS = new Set([
     "cfgopen", "cfgping", "cfgreset",
     "cfgclaims", "cfgstats", "cfghistory", "cfgdaily", "cfgback",
+    "cfgrank", "cfgtestalert",
 ]);
 
 client.on("interactionCreate", async interaction => {

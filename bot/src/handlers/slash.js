@@ -26,6 +26,8 @@ import {
     getHourlyStats,
     getStaffLeaderboard,
     getStaffActivity,
+    getPersonalStats,
+    getRecentActions,
 } from "../database.js";
 import {
     buildStatsEmbed,
@@ -33,6 +35,7 @@ import {
     buildLeaderboardEmbed,
     buildHourlyStatsEmbed,
     buildStaffActivityEmbed,
+    buildStaffDetailEmbed,
     buildPanelEmbed,
 } from "../utils/embedBuilder.js";
 import { callStaffAction, callBanIP } from "../utils/api.js";
@@ -260,6 +263,28 @@ export async function handleSlash(interaction) {
             await interaction.editReply({ embeds: [buildStaffActivityEmbed(activity, lang)] });
         } catch (e) {
             console.error("Staff activity error:", e);
+            await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
+        }
+        return;
+    }
+
+    // ─── STAFF STATS (one member, in detail) ───────────────────────────
+    if (commandName === "staffstats") {
+        const target = interaction.options.getUser("user");
+        if (!await deferPublic(interaction)) return;
+        lang = await getLang(interaction.user.id);
+        try {
+            // snap_logs.details keys actions by Discord TAG, not ID (see
+            // database.js) — same convention as the personal settings panel
+            // and the daily-summary DM.
+            const staffTag = target.tag || target.username;
+            const [personal, recent] = await Promise.all([
+                getPersonalStats(staffTag),
+                getRecentActions(staffTag, 10),
+            ]);
+            await interaction.editReply({ embeds: [buildStaffDetailEmbed(target, personal, recent, lang)] });
+        } catch (e) {
+            console.error("Staffstats error:", e);
             await interaction.editReply({ content: t(lang, "err_fetch") }).catch(() => {});
         }
         return;

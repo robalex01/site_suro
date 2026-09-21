@@ -28,5 +28,7 @@ export const slashCommands = [
         .addIntegerOption(opt => opt.setName("hours").setDescription("Hours to show (default 24)").setRequired(false)),
     new SlashCommandBuilder().setName("leaderboard").setDescription("🏆 Show staff leaderboard")
         .addIntegerOption(opt => opt.setName("limit").setDescription("Number of results (default 10)").setRequired(false)),
-    new SlashCommandBuilder().setName("staffactivity").setDescription("👥 Show detailed staff activity")
+    new SlashCommandBuilder().setName("staffactivity").setDescription("👥 Show detailed staff activity"),
+    new SlashCommandBuilder().setName("staffstats").setDescription("🔍 Show detailed stats for one staff member")
+        .addUserOption(opt => opt.setName("user").setDescription("Staff member").setRequired(true)),
 ];

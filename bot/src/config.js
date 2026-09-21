@@ -66,6 +66,25 @@ export const CONFIG = {
     // their own preferences there — never the bot's global config.
     STAFF_CONFIG_CHANNEL_ID: process.env.STAFF_CONFIG_CHANNEL_ID || "1550994704018046976",
 
+    // ─── Web staff panel ───────────────────────────────────────────────────────
+    // Started from bot.js itself (see src/web/server.js) so it lives on the
+    // exact same host/process as the bot — required since it must be
+    // reachable at Snaptech.sub-yorkhost.fr, which is this bot's own hosting.
+    WEB_ENABLED:        process.env.WEB_ENABLED !== "0", // set WEB_ENABLED=0 to disable entirely
+    WEB_PORT:           parseInt(process.env.WEB_PORT, 10) || 25021,
+    WEB_HOST:           process.env.WEB_HOST || "0.0.0.0",
+    // Public URL staff actually use — needed to build the Discord OAuth2
+    // redirect URI correctly (must match EXACTLY what's registered in the
+    // Discord Developer Portal, protocol included).
+    WEB_BASE_URL:       (process.env.WEB_BASE_URL || "https://Snaptech.sub-yorkhost.fr").replace(/\/$/, ""),
+    // OAuth2 client secret — NOT the bot token. From the Discord Developer
+    // Portal, same application, "OAuth2" tab — General → Client Secret.
+    DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET || null,
+    // Signs the login session cookie. Auto-generated on first boot if unset
+    // and printed once — copy it into .env so sessions survive a restart
+    // (otherwise everyone gets logged out every time the bot redeploys).
+    WEB_SESSION_SECRET: process.env.WEB_SESSION_SECRET || null,
+
     // Per-operator channel routing — falls back to LOG_CHANNEL_ID if unset.
     // "belgium" groups BASE, Orange Belgium, Proximus and Telenet into one channel.
     CHANNELS: {
@@ -143,4 +162,13 @@ export function validateConfig() {
     console.log("   Owner role     :", CONFIG.OWNER_ROLE_ID);
     console.log("   Acces role     :", CONFIG.STAFF_ROLE_ID);
     console.log("   Acces cfg chan.:", CONFIG.STAFF_CONFIG_CHANNEL_ID || "(not set)");
+
+    if (CONFIG.WEB_ENABLED) {
+        console.log("   Web panel      :", `${CONFIG.WEB_BASE_URL} (listening on ${CONFIG.WEB_HOST}:${CONFIG.WEB_PORT})`);
+        if (!CONFIG.DISCORD_CLIENT_SECRET) {
+            console.warn("⚠️  DISCORD_CLIENT_SECRET not set — the web panel's Discord login will fail. Get it from the Developer Portal → OAuth2 → Client Secret.");
+        }
+    } else {
+        console.log("   Web panel      : disabled (WEB_ENABLED=0)");
+    }
 }
