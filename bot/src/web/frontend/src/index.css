@@ -1,0 +1,14 @@
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * No @tailwind base: the Access Panel's own style.css already defines the
+ * document base (body, headings, links, code, :root theme variables) and
+ * Tailwind's preflight is disabled in tailwind.config.js for the same
+ * reason — this bundle only ever contributes utility classes on top.
+ */
+
+#sidebar-root {
+    display: flex;
+    height: 100%;
+}

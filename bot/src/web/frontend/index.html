@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      This page is only Vite's build entry point — it is never actually
+      served. In production the compiled sidebar.js/sidebar.css are pulled
+      into the real server-rendered pages by src/web/server.js. Useful for
+      `npm run dev` (standalone preview of the sidebar while working on it).
+    -->
+  </head>
+  <body data-theme="dark" style="margin:0;background:#0b0d12;">
+    <div id="sidebar-root"></div>
+    <script>
+      window.__SIDEBAR_DATA__ = {
+        variant: "dashboard",
+        user: { id: "0", username: "Preview User", avatar: null, owner: true },
+        activeView: "pending",
+        counts: { pending: 3, active: 1, waiting: 0, submitted: 2, all: 6 },
+      };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

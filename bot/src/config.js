@@ -73,6 +73,12 @@ export const CONFIG = {
     WEB_ENABLED:        process.env.WEB_ENABLED !== "0", // set WEB_ENABLED=0 to disable entirely
     WEB_PORT:           parseInt(process.env.WEB_PORT, 10) || 25021,
     WEB_HOST:           process.env.WEB_HOST || "0.0.0.0",
+    // A pending request older than this drops off the "Unclaimed" queue on
+    // the web dashboard — it's presumably dead/abandoned by then and just
+    // clutters the view. Purely a display filter: the row itself, and
+    // Discord's own channel message, are untouched — claiming it from
+    // Discord (or the DB directly) still works exactly as before.
+    UNCLAIMED_MAX_AGE_MINUTES: parseInt(process.env.UNCLAIMED_MAX_AGE_MINUTES, 10) || 20,
     // Public URL staff actually use — needed to build the Discord OAuth2
     // redirect URI correctly (must match EXACTLY what's registered in the
     // Discord Developer Portal, protocol included).
