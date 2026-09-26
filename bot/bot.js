@@ -1,30 +1,40 @@
 import "dotenv/config";
+
 // Must come before anything that makes network calls: installs the
 // keep-alive HTTP dispatcher (see src/net.js for why).
 import "./src/net.js";
+
 import crypto from "node:crypto";
 import dns from "node:dns";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Client, GatewayIntentBits, REST, Routes, Events } from "discord.js";
+
 import { CONFIG, validateConfig } from "./src/config.js";
 import { slashCommands } from "./src/commands.js";
 import { startPolling } from "./src/polling.js";
 import { handleButton } from "./src/handlers/buttons.js";
 import { handleSlash } from "./src/handlers/slash.js";
+
 import {
   postOrUpdateConfigPanel,
   handleConfigButton,
   handleConfigSelect,
 } from "./src/handlers/staffConfig.js";
+
 import { startDailySummarySchedule } from "./src/dailySummary.js";
+
 import {
   acquireInstanceLock,
   renewInstanceLock,
   releaseInstanceLock,
 } from "./src/database.js";
+
 import { startPrefsRefresh, peekLang } from "./src/utils/userPrefs.js";
 import { t } from "./src/utils/i18n.js";
 import { startWebPanel } from "./src/web/server.js";
+
+// Access/payment expiration sweeper
+import { startAccessSweeper } from "./src/web/payments.js";
 
 // ─── Force IPv4 DNS resolution ──────────────────────────────────────────────
 //
@@ -32,13 +42,14 @@ import { startWebPanel } from "./src/web/server.js";
 // IPv6 routing is present but broken or asymmetric: packets go out fine but
 // replies don't reliably come back. REST calls (undici/fetch) silently
 // recover via Happy Eyeballs fallback to IPv4, so nothing looks wrong there
-// — but the raw WebSocket used for the gateway connection (the `ws`
+// — but the raw WebSocket used for the gateway connection (the ws
 // package, used internally by discord.js) has no such fallback: it just
 // connects to whichever address Node's DNS resolver hands it first. If
 // that's a flaky IPv6 address, the gateway socket connects, survives a
 // while on luck, then dies with no clear cause — exactly the recurring
 // "Shard 0 reconnecting" pattern seen in prod, with REST calls (channel
 // sends, DMs) still working fine right up until the moment it happens.
+//
 // Forcing IPv4-first resolution stops the gateway from ever being handed a
 // bad IPv6 address in the first place. Confirmed not fixed by pinning
 // Node.js to an LTS version (still reproduced on v22.23.0), which rules out
@@ -48,6 +59,7 @@ dns.setDefaultResultOrder("ipv4first");
 validateConfig();
 
 // ─── Process-level safety net ──────────────────────────────────────────────
+//
 // Under heavy load (many concurrent requests/interactions), a single
 // unexpected rejection anywhere that isn't explicitly caught can otherwise
 // bring the whole Node process down silently (no crash log, systemd/Docker
@@ -57,11 +69,12 @@ validateConfig();
 process.on("unhandledRejection", (reason) => {
   console.error("❌ Unhandled promise rejection:", reason);
 });
+
 process.on("uncaughtException", (err) => {
   console.error("❌ Uncaught exception:", err);
 });
 
-// ─── Event-loop lag monitor ──────────────────────────────────────────────────
+// ─── Event-loop lag monitor ─────────────────────────────────────────────────
 //
 // The console shows interactions arriving 2-45 SECONDS old ("gateway
 // dispatch delay or blocked event loop"), gateway pings of 4-8 s, and REST
@@ -72,15 +85,19 @@ process.on("uncaughtException", (err) => {
 // more CPU. If lag stays low while pings/defer latency are high, the
 // bottleneck is the network path to Discord instead.
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+
 loopDelay.enable();
+
 setInterval(() => {
   const maxMs = Math.round(loopDelay.max / 1e6);
   const p99Ms = Math.round(loopDelay.percentile(99) / 1e6);
+
   if (maxMs > 1000) {
     console.warn(
       `🐌 Event loop stalled: max ${maxMs}ms, p99 ${p99Ms}ms over the last 30s — the host is CPU-starved/throttled (this is not a network problem).`,
     );
   }
+
   loopDelay.reset();
 }, 30_000);
 
@@ -88,8 +105,8 @@ setInterval(() => {
 //
 // If two bot processes are ever running at once with the same token (a
 // stuck/orphaned process from a bad restart, a manual `node bot.js` while
-// the panel's own process is still up, etc.), Discord happily gives BOTH of
-// them a live gateway session — and dispatches every button click to both.
+// the panel's own process is still up, etc.), Discord happily gives BOTH
+// of them a live gateway session — and dispatches every button click to both.
 // Only one can win each interaction's ack; the other always fails with
 // "Unknown interaction" / "already acknowledged". That's a duplicate-process
 // bug, not a Discord flakiness issue, and it can't be fixed by retrying.
@@ -108,6 +125,7 @@ setInterval(() => {
 // "2/3", one bad minute away from killing a perfectly healthy bot. A restart
 // costs minutes of downtime on this host (npm install runs on every start),
 // so being patient here is much cheaper than exiting.
+
 const INSTANCE_ID = crypto.randomUUID();
 const LOCK_STALE_AFTER_SECONDS = 120;
 const LOCK_RENEW_INTERVAL_MS = 10_000;
@@ -116,11 +134,15 @@ const BOOT_LOCK_ATTEMPTS = 6;
 
 async function ensureSingleInstance() {
   let result;
+
   // A database hiccup at boot used to throw straight out of this top-level
   // await and crash the process — and every crash costs a full restart.
   for (let attempt = 1; ; attempt++) {
     try {
-      result = await acquireInstanceLock(INSTANCE_ID, LOCK_STALE_AFTER_SECONDS);
+      result = await acquireInstanceLock(
+        INSTANCE_ID,
+        LOCK_STALE_AFTER_SECONDS,
+      );
       break;
     } catch (e) {
       if (attempt >= BOOT_LOCK_ATTEMPTS) {
@@ -128,65 +150,88 @@ async function ensureSingleInstance() {
           `❌ Could not reach the database to acquire the instance lock after ${BOOT_LOCK_ATTEMPTS} attempts:`,
           e.message,
         );
+
         process.exit(1);
       }
+
       console.warn(
-        `⚠️  Instance lock: database unreachable (attempt ${attempt}/${BOOT_LOCK_ATTEMPTS}): ${e.message} — retrying in 3s`,
+        `⚠️ Instance lock: database unreachable (attempt ${attempt}/${BOOT_LOCK_ATTEMPTS}): ${e.message} — retrying in 3s`,
       );
+
       await new Promise((r) => setTimeout(r, 3000));
     }
   }
 
   if (!result.acquired) {
     const h = result.heldBy || {};
+
     console.error(
       "❌ Another bot instance is already running with this token — refusing to start.",
     );
+
     console.error(
       `   Held by: host=${h.hostname || "?"}  pid=${h.pid || "?"}  instance=${h.instance_id || "?"}`,
     );
+
     console.error(`   Last heartbeat: ${h.last_heartbeat || "?"}`);
+
     console.error(
       `   If that process is actually dead, this lock self-expires after ${LOCK_STALE_AFTER_SECONDS}s — wait a bit and restart.`,
     );
+
     console.error(
       "   If it's alive, stop it first (check for a duplicate process/container/panel entry running this bot).",
     );
+
     process.exit(1);
   }
+
   console.log(`🔒 Instance lock acquired (${INSTANCE_ID})`);
 }
 
 function startLockHeartbeat(client) {
   let consecutiveFailures = 0;
-  let renewing = false; // never let two renewals run at once
+  let renewing = false;
+
   setInterval(async () => {
     if (renewing) return;
+
     renewing = true;
+
     try {
       const stillOwn = await renewInstanceLock(INSTANCE_ID);
-      if (consecutiveFailures > 0)
+
+      if (consecutiveFailures > 0) {
         console.log(
-          `✅ Instance lock renewal recovered after ${consecutiveFailures} failure${consecutiveFailures === 1 ? "" : "s"}.`,
+          `✅ Instance lock renewal recovered after ${consecutiveFailures} failure${
+            consecutiveFailures === 1 ? "" : "s"
+          }.`,
         );
+      }
+
       consecutiveFailures = 0;
+
       if (!stillOwn) {
         console.error(
           "❌ Lost the instance lock to another process — shutting down to avoid handling interactions in parallel with it.",
         );
+
         await client.destroy().catch(() => {});
         process.exit(1);
       }
     } catch (e) {
       consecutiveFailures++;
+
       console.warn(
-        `⚠️  Could not renew instance lock (${consecutiveFailures}/${MAX_CONSECUTIVE_RENEW_FAILS}):`,
+        `⚠️ Could not renew instance lock (${consecutiveFailures}/${MAX_CONSECUTIVE_RENEW_FAILS}):`,
         e.message,
       );
+
       if (consecutiveFailures >= MAX_CONSECUTIVE_RENEW_FAILS) {
         console.error(
           "❌ Instance lock renewal failed repeatedly — shutting down as a precaution.",
         );
+
         await client.destroy().catch(() => {});
         process.exit(1);
       }
@@ -200,6 +245,7 @@ async function gracefulShutdown() {
   await releaseInstanceLock(INSTANCE_ID);
   process.exit(0);
 }
+
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
 
@@ -218,6 +264,7 @@ const client = new Client({
   // No GuildMembers intent either: the request-channel ping is a plain
   // @role mention (pings.js), which needs no member list.
   intents: [GatewayIntentBits.Guilds],
+
   // Fail hung REST calls after 10s (default 15s) — an interaction token is
   // dead after 3s anyway, and callers retry on their own.
   rest: { timeout: 10_000 },
@@ -240,25 +287,35 @@ async function deployCommands() {
     console.log("🔄 Deploying slash commands...");
 
     if (CONFIG.GUILD_ID) {
-      // 1. Deploy to guild (instant)
       await rest.put(
-        Routes.applicationGuildCommands(CONFIG.CLIENT_ID, CONFIG.GUILD_ID),
-        { body: slashCommands.map((c) => c.toJSON()) },
+        Routes.applicationGuildCommands(
+          CONFIG.CLIENT_ID,
+          CONFIG.GUILD_ID,
+        ),
+        {
+          body: slashCommands.map((c) => c.toJSON()),
+        },
       );
-      // 2. Wipe global commands so they don't appear as duplicates
+
       await rest.put(Routes.applicationCommands(CONFIG.CLIENT_ID), {
         body: [],
       });
-      console.log("✅ Commands deployed to guild — global commands cleared");
+
+      console.log(
+        "✅ Commands deployed to guild — global commands cleared",
+      );
     } else {
-      // Deploy globally (up to 1 h propagation)
       await rest.put(Routes.applicationCommands(CONFIG.CLIENT_ID), {
         body: slashCommands.map((c) => c.toJSON()),
       });
+
       console.log("✅ Commands deployed globally");
     }
   } catch (e) {
-    console.error("❌ Slash command deploy error:", e.message || e);
+    console.error(
+      "❌ Slash command deploy error:",
+      e.message || e,
+    );
   }
 }
 
@@ -269,36 +326,43 @@ async function deployCommands() {
 client.once(Events.ClientReady, () => {
   console.log("🤖 Bot connected as " + client.user.tag);
   console.log("📡 API: " + CONFIG.API_BASE);
+
   console.log(
-    "📝 Log channel: " + (CONFIG.LOG_CHANNEL_ID || "Not set — use /config"),
+    "📝 Log channel: " +
+      (CONFIG.LOG_CHANNEL_ID || "Not set — use /config"),
   );
 
   // Load every staff member's preferences into memory FIRST so that, from
   // the very first click, language lookups never touch the database.
   startPrefsRefresh();
 
-  deployCommands().catch((e) => console.error("Deploy error:", e));
+  deployCommands().catch((e) =>
+    console.error("Deploy error:", e),
+  );
+
   startPolling(client);
   startDailySummarySchedule(client);
+
   postOrUpdateConfigPanel(client).catch((e) =>
     console.error("Staff settings panel error:", e),
   );
-  startWebPanel(client); 
-  import { startAccessSweeper } from "./src/web/payments.js"; // en haut avec les imports
-  startAccessSweeper(client); // retire le rôle à expiration, ré-applique les grants valides
+
+  startWebPanel(client);
+
+  // Remove expired roles and re-apply valid grants.
+  startAccessSweeper(client);
 
   // If the gateway connection itself is unhealthy (frequent reconnects,
   // high ping), interactions arrive to our handler already several
   // seconds old through no fault of our own code — which is exactly what
   // makes deferReply fail with "Unknown interaction" no matter how fast
-  // we react. Logging ping periodically makes that visible. (Only warns
-  // above 1.5s: a ping of 500-1000ms is sluggish but not what breaks
-  // interactions, and warning on it just buried the useful lines.)
+  // we react. Logging ping periodically makes that visible.
   setInterval(() => {
     const ping = client.ws.ping;
+
     if (ping > 1500) {
       console.warn(
-        `⚠️  Gateway ping is ${ping}ms — high latency to Discord can make interactions arrive already stale.`,
+        `⚠️ Gateway ping is ${ping}ms — high latency to Discord can make interactions arrive already stale.`,
       );
     }
   }, 30_000);
@@ -309,21 +373,29 @@ client.once(Events.ClientReady, () => {
 // than a bug in the interaction-handling code itself.
 client.on("shardDisconnect", (event, id) =>
   console.warn(
-    `⚠️  Shard ${id} disconnected (code ${event.code}, reason "${event.reason || "none"}").`,
+    `⚠️ Shard ${id} disconnected (code ${event.code}, reason "${
+      event.reason || "none"
+    }").`,
   ),
 );
+
 client.on("shardReconnecting", (id) =>
-  console.warn(`⚠️  Shard ${id} reconnecting…`),
+  console.warn(`⚠️ Shard ${id} reconnecting…`),
 );
+
 client.on("shardResume", (id, replayed) =>
   console.warn(
-    `⚠️  Shard ${id} resumed (${replayed} events replayed — those may include already-stale interactions).`,
+    `⚠️ Shard ${id} resumed (${replayed} events replayed — those may include already-stale interactions).`,
   ),
 );
+
 client.on("shardError", (err, id) =>
   console.error(`❌ Shard ${id} error:`, err.message || err),
 );
-client.on("warn", (info) => console.warn("⚠️  discord.js warn:", info));
+
+client.on("warn", (info) =>
+  console.warn("⚠️ discord.js warn:", info),
+);
 
 // Custom IDs prefixed "cfg…" belong to the personal staff-settings panel
 // (staffConfig.js), not the request-processing buttons (claim/len4/len6/
@@ -346,6 +418,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isButton()) {
       const action = interaction.customId.split("_")[0];
+
       if (CONFIG_BUTTON_ACTIONS.has(action)) {
         await handleConfigButton(interaction);
       } else {
@@ -358,6 +431,7 @@ client.on("interactionCreate", async (interaction) => {
     }
   } catch (e) {
     console.error("Interaction error:", e);
+
     if (
       interaction.isRepliable?.() &&
       !interaction.replied &&
@@ -365,7 +439,10 @@ client.on("interactionCreate", async (interaction) => {
     ) {
       await interaction
         .reply({
-          content: t(peekLang(interaction.user.id), "generic_error"),
+          content: t(
+            peekLang(interaction.user.id),
+            "generic_error",
+          ),
           flags: 64,
         })
         .catch(() => {});
@@ -376,5 +453,7 @@ client.on("interactionCreate", async (interaction) => {
 // ─── Boot ────────────────────────────────────────────────────────────────────
 
 await ensureSingleInstance();
+
 startLockHeartbeat(client);
+
 client.login(CONFIG.TOKEN);
